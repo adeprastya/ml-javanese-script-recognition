@@ -11,5 +11,7 @@ dependencies:
   - ipykernel
   - ipython
 
+  - numpy
   - pandas
+  - pillow
   - matplotlib
