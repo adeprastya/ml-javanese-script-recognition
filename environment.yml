@@ -12,7 +12,7 @@ dependencies:
   - ipython
 
   - numpy
-  - pandas
   - pillow
+  - pandas
   - matplotlib
-  - albumentations
+  - scikit-learn
