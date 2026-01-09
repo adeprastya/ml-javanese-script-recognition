@@ -1,2 +1,7 @@
-data/
+data/**/*image*/
+data/**/*images*/
+data/**/*.png
+data/**/*.jpg
+data/**/*.jpeg
+
 fonts/
