@@ -1,4 +1,4 @@
-name: ocr-jawa-env
+name: ocr-javanese
 
 channels:
   - conda-forge
@@ -13,7 +13,7 @@ dependencies:
 
   - numpy
   - pillow
+  - scikit-learn
   - pandas
   - matplotlib
-  - scikit-learn
   - tqdm
