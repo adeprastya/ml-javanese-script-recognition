@@ -1,7 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Project
 data/**/*image*/
 data/**/*images*/
 data/**/*.png
 data/**/*.jpg
 data/**/*.jpeg
+
+models/
 
 fonts/

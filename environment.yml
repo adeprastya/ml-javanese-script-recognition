@@ -1,19 +1,10 @@
-name: ocr-javanese
-
+name: ocr
 channels:
   - conda-forge
   - defaults
-
 dependencies:
   - python=3.10.19
   - pip
 
   - ipykernel
   - ipython
-
-  - numpy
-  - pillow
-  - scikit-learn
-  - pandas
-  - matplotlib
-  - tqdm

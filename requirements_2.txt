@@ -1,0 +1,8 @@
+numpy
+pillow
+scikit-learn
+albumentations
+
+tqdm
+matplotlib
+pandas
