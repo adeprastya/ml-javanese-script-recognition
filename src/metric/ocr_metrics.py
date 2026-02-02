@@ -26,23 +26,44 @@ def levenshtein(a: str, b: str) -> int:
     return dp[m]
 
 
-def character_error_rate(preds, refs):
+def cer(pred, ref):
     """
-    CER = total edit distance / total characters in references
+    Compute Character Error Rate for a single prediction vs reference
+    """
+    if isinstance(pred, str) and isinstance(ref, str):
+        total_edits = levenshtein(pred, ref)
+        total_chars = len(ref)
+        return total_edits / max(total_chars, 1)
+    else:
+        raise ValueError("pred and ref must be strings")
+
+
+def em(pred, ref):
+    """
+    Exact Match for a single prediction vs reference
+    """
+    if isinstance(pred, str) and isinstance(ref, str):
+        return 1.0 if pred == ref else 0.0
+    else:
+        raise ValueError("pred and ref must be strings")
+
+
+def batch_cer(preds, refs):
+    """
+    Compute CER for a batch of predictions and references
+    preds: list of str
+    refs: list of str
     """
     assert len(preds) == len(refs), "preds and refs must have same length"
-
     total_edits = sum(levenshtein(p, r) for p, r in zip(preds, refs))
     total_chars = sum(len(r) for r in refs)
-
     return total_edits / max(total_chars, 1)
 
 
-def exact_match_accuracy(preds, refs):
+def batch_em(preds, refs):
     """
-    Exact Match Accuracy (sentence-level)
+    Compute Exact Match Accuracy for a batch of predictions and references
     """
     assert len(preds) == len(refs), "preds and refs must have same length"
-
     correct = sum(p == r for p, r in zip(preds, refs))
     return correct / max(len(refs), 1)

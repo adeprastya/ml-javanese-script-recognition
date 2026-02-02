@@ -4,12 +4,8 @@ __pycache__/
 *$py.class
 
 # Project
-data/**/*image*/
-data/**/*images*/
-data/**/*.png
-data/**/*.jpg
-data/**/*.jpeg
-
-models/
-
 fonts/
+
+dataset/
+
+builds/
