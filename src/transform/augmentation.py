@@ -56,7 +56,7 @@ def augmentation_transform(prob=1.0, seed=None):
                     ),
                     A.ThinPlateSpline(
                         scale_range=[0.02, 0.1],
-                        num_control_points=3,
+                        num_control_points=4,
                         border_mode=cv2.BORDER_CONSTANT,
                         fill=(255, 255, 255),
                         p=1.0,

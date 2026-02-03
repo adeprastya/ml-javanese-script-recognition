@@ -17,6 +17,10 @@ def save_training_logs(
     model_dir,
     model_name,
     device,
+    total_params,
+    trainable_params,
+    cnn_layers,
+    bilstm_layers,
     datasets,
     train_ds,
     val_ds,
@@ -51,6 +55,10 @@ def save_training_logs(
     log_data = {
         "meta": {
             "model_name": model_name,
+            "cnn_layers": cnn_layers,
+            "bilstm_layers": bilstm_layers,
+            "total_params": total_params,
+            "trainable_params": trainable_params,
             "device": str(device),
         },
         "dataset": {

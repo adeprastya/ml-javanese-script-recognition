@@ -54,16 +54,19 @@ def main():
 
     print("Loading Config...")
 
-    MODEL_NAME = "aug_off_50e__hard_1.0_rare__all"
+    MODEL_NAME = "50e__3_layer_cnn__1_layer_bilstm"
 
-    IMG_HEIGHT = 64
-    BATCH_SIZE = 16
-    NUM_WORKERS = 3
+    CNN_LAYER = 3
+    BILSTM_LAYER = 1
 
     EPOCHS = 50
-    EARLY_STOP_PATIENCE = 10
+    EARLY_STOP_PATIENCE = 7
     CER_EPS = 1e-3
     LOSS_EPS = 1e-4
+
+    IMG_HEIGHT = 64
+    BATCH_SIZE = 8
+    NUM_WORKERS = 3
 
     MODEL_DIR = f"{PROJECT_ROOT}/builds/{MODEL_NAME}"
     BASE_SYNT_DIR = f"{PROJECT_ROOT}/dataset/word_nglegena_synthetic_20260130_155231"
@@ -186,12 +189,17 @@ def main():
 
     print("Building model...")
 
-    model = CNNBiLSTM(NUM_CLASSES).to(DEVICE)
+    model = CNNBiLSTM(NUM_CLASSES, cnn_layers=CNN_LAYER, rnn_layers=BILSTM_LAYER).to(
+        DEVICE
+    )
     criterion = nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=3
     )
+
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
     # =======================
     # TRAINING
@@ -324,11 +332,17 @@ def main():
     train_duration_sec = int(train_end_ts - train_start_ts)
     duration = int(time.time() - start_time)
 
-    print(f"Training finished in {duration // 60}m {duration % 60}s")
+    print(
+        f"Training finished in {duration // 3600}h {duration % 3600 // 60}m {duration % 60}s"
+    )
     save_training_logs(
         model_dir=MODEL_DIR,
         model_name=MODEL_NAME,
         device=DEVICE,
+        cnn_layers=CNN_LAYER,
+        bilstm_layers=BILSTM_LAYER,
+        total_params=total_params,
+        trainable_params=trainable_params,
         train_ds=train_ds,
         val_ds=val_ds,
         datasets=DATA_SOURCES,
