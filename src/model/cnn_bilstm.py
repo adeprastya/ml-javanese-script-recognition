@@ -5,6 +5,12 @@ class CNNBiLSTM(nn.Module):
     def __init__(self, num_classes: int, cnn_layers: int, rnn_layers: int):
         super().__init__()
 
+        if cnn_layers not in [3, 5, 7]:
+            raise ValueError(f"Invalid cnn_layers: {cnn_layers}, must be 3, 5, or 7.")
+        if rnn_layers not in [1, 2, 3]:
+            raise ValueError(f"Invalid rnn_layers: {rnn_layers}, must be 1, 2, or 3.")
+
+        # ---------- Feature extraction ----------
         if cnn_layers == 3:
             self.cnn = nn.Sequential(
                 # Block 1
@@ -22,8 +28,8 @@ class CNNBiLSTM(nn.Module):
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(kernel_size=(2, 1)),  # 16 -> 8
-                # Global
-                nn.AdaptiveAvgPool2d((1, None)),
+                # Global Pool
+                nn.AdaptiveAvgPool2d((1, None)),  # 8 -> 1
             )
         elif cnn_layers == 5:
             self.cnn = nn.Sequential(
@@ -48,8 +54,8 @@ class CNNBiLSTM(nn.Module):
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(kernel_size=(2, 1)),  # 16 -> 8
-                # Global
-                nn.AdaptiveAvgPool2d((1, None)),
+                # Global Pool
+                nn.AdaptiveAvgPool2d((1, None)),  # 8 -> 1
             )
         elif cnn_layers == 7:
             self.cnn = nn.Sequential(
@@ -80,17 +86,15 @@ class CNNBiLSTM(nn.Module):
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(kernel_size=(2, 1)),  # 16 -> 8
-                # Global
-                nn.AdaptiveAvgPool2d((1, None)),
+                # Global Pool
+                nn.AdaptiveAvgPool2d((1, None)),  # 8 -> 1
             )
-        else:
-            raise ValueError(f"Invalid value for cnn_layers: {cnn_layers}")
 
         # ---------- Sequence modeling ----------
         self.rnn = nn.LSTM(
-            input_size=256,  # [256, 512]
+            input_size=256,
             hidden_size=256,
-            num_layers=rnn_layers,  # [1, 2, 3]
+            num_layers=rnn_layers,  # 1 / 2 / 3
             bidirectional=True,
             batch_first=True,
         )
@@ -99,95 +103,17 @@ class CNNBiLSTM(nn.Module):
         self.fc = nn.Linear(512, num_classes)
 
     def forward(self, x):
-        x = self.cnn(x)  # [B, CNN out ch, 1, W']
-        x = x.squeeze(2)  # [B, CNN out ch, W']
-        x = x.permute(0, 2, 1)  # [B, W', CNN out ch]
+        # Feature extraction
+        x = self.cnn(x)  # [B, CNN_out_channel(256), H(1), W']
 
-        x, _ = self.rnn(x)  # [B, W', BiLSTM out ch]
-        x = self.fc(x)  # [B, W', num_classes]
+        # Reshape
+        x = x.squeeze(2)  # [B, CNN_out_channel(256), W']
+        x = x.permute(0, 2, 1)  # [B, W', CNN_out_channel(256)]
+
+        # Sequence modeling
+        x, _ = self.rnn(x)  # [B, W', BiLSTM_out_feature(512)]
+
+        # Classification
+        x = self.fc(x)  # [B, W', num_classes(21)]
 
         return x
-
-
-# # --------- CNN feature extractor (3 conv layers) --------
-# self.cnn = nn.Sequential(
-#     # Block 1
-#     nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, padding=1),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(2, 2),
-#     # Block 2
-#     nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(kernel_size=(2, 2)),
-#     # Block 3
-#     nn.Conv2d(in_channels=128, out_channels=512, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(512),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(kernel_size=(2, 1)),
-#     # Collapse height dimension to 1 (C, 1, W)
-#     nn.AdaptiveAvgPool2d((1, None)),
-# )
-
-# # -------- CNN feature extractor (5 conv layers) --------
-# self.cnn = nn.Sequential(
-#     # Block 1
-#     nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, padding=1),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(2, 2),
-#     # Block 2
-#     nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(2, 2),
-#     # Block 3
-#     nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(256),
-#     nn.ReLU(inplace=True),
-#     # Block 4
-#     nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
-#     nn.ReLU(inplace=True),
-#     nn.BatchNorm2d(256),  # UPDATED
-#     nn.MaxPool2d(kernel_size=(2, 1)),
-#     # Block 5
-#     nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(512),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(kernel_size=(2, 1)),
-#     # Collapse height dimension to 1 (C, 1, W)
-#     nn.AdaptiveAvgPool2d((1, None)),
-# )
-
-# # --------- CNN feature extractor (7 conv layers) ----------
-# self.cnn = nn.Sequential(
-#     # Block 1
-#     nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, padding=1),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(2, 2),
-#     # Block 2
-#     nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(2, 2),
-#     # Block 3
-#     nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(256),  # UPDATED
-#     nn.ReLU(inplace=True),
-#     # Block 4
-#     nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(256),  # UPDATED
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(kernel_size=(2, 1)),
-#     # Block 5
-#     nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(512),  # UPDATED
-#     nn.ReLU(inplace=True),
-#     # Block 6
-#     nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(512),  # UPDATED
-#     nn.ReLU(inplace=True),
-#     nn.MaxPool2d(kernel_size=(2, 1)),
-#     # Block 7
-#     nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1),
-#     nn.BatchNorm2d(512),  # UPDATED
-#     nn.ReLU(inplace=True),
-#     # Collapse height dimension to 1
-#     nn.AdaptiveAvgPool2d((1, None)),
-# )

@@ -37,14 +37,17 @@ class JavaneseOCRDataset(Dataset):
         img_path = os.path.join(self.img_dir, row["image"])
         img = Image.open(img_path).convert("RGB")
 
+        # Augmentation
         if self.augmentation is not None:
             img_np = np.array(img)
             augmented = self.augmentation(image=img_np)
             img = Image.fromarray(augmented["image"])
 
+        # Preprocessing
         if self.preprocessing is not None:
             img = self.preprocessing(img)
 
+        # Label encoding
         label = self.encode(row["transcription"])
 
         return img, label, len(label), row["image"]

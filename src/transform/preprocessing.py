@@ -1,17 +1,7 @@
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 import cv2
 import torchvision.transforms as T
-
-
-class ResizeByHeight:
-    def __init__(self, height):
-        self.height = height
-
-    def __call__(self, img: Image.Image) -> Image.Image:
-        w, h = img.size
-        new_w = int(w * self.height / h)
-        return img.resize((new_w, self.height), Image.BILINEAR)
 
 
 class CLAHE:
@@ -28,11 +18,11 @@ class CLAHE:
 
         img_np = np.array(img)
 
-        # grayscale
+        # If Grayscale
         if img_np.ndim == 2:
             return Image.fromarray(self._clahe.apply(img_np))
 
-        # RGB
+        # If RGB
         lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
         l, a, b = cv2.split(lab)
         l = self._clahe.apply(l)
@@ -40,10 +30,24 @@ class CLAHE:
         return Image.fromarray(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB))
 
 
+class ResizeByHeight:
+    def __init__(self, height):
+        self.height = height
+
+    def __call__(self, img: Image.Image) -> Image.Image:
+        w, h = img.size
+        new_w = int(w * self.height / h)
+        return img.resize((new_w, self.height), Image.BILINEAR)
+
+
+class Invert(object):
+    def __call__(self, img):
+        return ImageOps.invert(img)
+
+
 def preprocessing_transform(img_height, enhance=False):
     transforms = [
         T.Grayscale(1),
-        ResizeByHeight(img_height),
     ]
 
     if enhance:
@@ -51,8 +55,10 @@ def preprocessing_transform(img_height, enhance=False):
 
     transforms.extend(
         [
+            Invert(),
+            ResizeByHeight(img_height),
             T.ToTensor(),
-            T.Normalize(mean=[0.5], std=[0.5]),
+            T.Normalize(mean=[0.0], std=[1.0]),  # [0, 1]
         ]
     )
 

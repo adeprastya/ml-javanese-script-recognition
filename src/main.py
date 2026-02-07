@@ -54,10 +54,12 @@ def main():
 
     print("Loading Config...")
 
-    MODEL_NAME = "50e__3_layer_cnn__1_layer_bilstm"
+    MODEL_NAME = "null"
 
-    CNN_LAYER = 3
-    BILSTM_LAYER = 1
+    CNN_LAYER = 5
+    BILSTM_LAYER = 2
+
+    LEARNING_RATE = 1e-4
 
     EPOCHS = 50
     EARLY_STOP_PATIENCE = 7
@@ -193,7 +195,7 @@ def main():
         DEVICE
     )
     criterion = nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=3
     )

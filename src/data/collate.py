@@ -11,11 +11,13 @@ def ctc_collate(batch):
     input_lens = []
 
     for img, w in zip(images, widths):
-        padded_images.append(torch.nn.functional.pad(img, (0, max_width - w)))
+        padded_images.append(
+            torch.nn.functional.pad(img, (0, max_width - w), value=0.0)
+        )
         input_lens.append(w // 4)
 
     return (
-        torch.stack(padded_images),  # [B, 1, H, W_max]
+        torch.stack(padded_images),  # [B, Channel(1), H, W_max]
         torch.cat(labels),  # [sum(label_len)]
         torch.tensor(label_lens),  # [B]
         torch.tensor(input_lens),  # [B]
