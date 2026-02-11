@@ -55,10 +55,8 @@ def preprocessing_transform(img_height, enhance=False):
 
     transforms.extend(
         [
-            Invert(),
             ResizeByHeight(img_height),
             T.ToTensor(),
-            T.Normalize(mean=[0.0], std=[1.0]),  # [0, 1]
         ]
     )
 

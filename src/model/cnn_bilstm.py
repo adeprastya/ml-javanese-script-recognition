@@ -92,28 +92,28 @@ class CNNBiLSTM(nn.Module):
 
         # ---------- Sequence modeling ----------
         self.rnn = nn.LSTM(
-            input_size=256,
-            hidden_size=256,
+            input_size=256,  # H' * C
+            hidden_size=256,  # H' * C
             num_layers=rnn_layers,  # 1 / 2 / 3
             bidirectional=True,
             batch_first=True,
         )
 
         # ---------- Classification ----------
-        self.fc = nn.Linear(512, num_classes)
+        self.fc = nn.Linear(in_features=512, out_features=num_classes)
 
     def forward(self, x):
         # Feature extraction
-        x = self.cnn(x)  # [B, CNN_out_channel(256), H(1), W']
+        x = self.cnn(x)  # [B, C(256), H(1), W]
 
         # Reshape
-        x = x.squeeze(2)  # [B, CNN_out_channel(256), W']
-        x = x.permute(0, 2, 1)  # [B, W', CNN_out_channel(256)]
+        x = x.squeeze(2)  # [B, C/F(256), W/T]
+        x = x.permute(0, 2, 1)  # [B, W/T, C/F(256)]
 
         # Sequence modeling
-        x, _ = self.rnn(x)  # [B, W', BiLSTM_out_feature(512)]
+        x, _ = self.rnn(x)  # [B, T, F(512)]
 
         # Classification
-        x = self.fc(x)  # [B, W', num_classes(21)]
+        x = self.fc(x)  # [B, W, Class(21)]
 
         return x

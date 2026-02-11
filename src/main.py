@@ -104,12 +104,12 @@ def main():
                 "aug": None,
                 "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=False),
             },
-            {
-                "csv": f"{PROJECT_ROOT}/dataset/test-sample/label.csv",
-                "img_dir": f"{PROJECT_ROOT}/dataset/test-sample/image",
-                "aug": None,
-                "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=True),
-            },
+            # {
+            #     "csv": f"{PROJECT_ROOT}/dataset/test-sample/label.csv",
+            #     "img_dir": f"{PROJECT_ROOT}/dataset/test-sample/image",
+            #     "aug": None,
+            #     "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=True),
+            # },
         ],
     }
 

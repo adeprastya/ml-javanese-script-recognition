@@ -36,20 +36,54 @@ def augmentation_transform(prob=1.0, seed=None):
                 ],
                 p=0.3,
             ),
+            A.Affine(
+                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
+                rotate=(-2, 2),
+                shear=(-3, 3),
+                fit_output=True,
+                border_mode=cv2.BORDER_CONSTANT,
+                fill=(255, 255, 255),
+                p=0.6,
+            ),
+            A.GaussNoise(std_range=(0.02, 0.1), mean_range=(-0.2, 0.2), p=0.3),
+            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=0.3),
+            A.RandomBrightnessContrast(
+                brightness_limit=(-0.4, 0.4),
+                contrast_limit=(-0.4, 0.4),
+                ensure_safe_range=True,
+                p=0.6,
+            ),
+        ],
+        p=prob,
+        seed=seed,
+    )
+
+
+def _all_augmentation_transform(prob=1.0, seed=None):
+    return A.Compose(
+        [
+            A.Lambda(image=random_padding, p=0.6),
             A.OneOf(
                 [
-                    A.GridDistortion(
-                        num_steps=5,
-                        distort_limit=[-0.1, 0.1],
-                        normalized=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
+                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
+                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
+                ],
+                p=0.3,
+            ),
+            A.OneOf(
+                [
                     A.ElasticTransform(
                         alpha=10,
                         sigma=60,
                         same_dxdy=True,
+                        border_mode=cv2.BORDER_CONSTANT,
+                        fill=(255, 255, 255),
+                        p=1.0,
+                    ),
+                    A.GridDistortion(
+                        num_steps=5,
+                        distort_limit=[-0.1, 0.1],
+                        normalized=True,
                         border_mode=cv2.BORDER_CONSTANT,
                         fill=(255, 255, 255),
                         p=1.0,
@@ -86,554 +120,6 @@ def augmentation_transform(prob=1.0, seed=None):
                 contrast_limit=(-0.4, 0.4),
                 ensure_safe_range=True,
                 p=0.6,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _noGridDist_rare_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=0.6),
-            A.OneOf(
-                [
-                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-                ],
-                p=0.3,
-            ),
-            A.OneOf(
-                [
-                    # A.GridDistortion(
-                    #     num_steps=5,
-                    #     distort_limit=[-0.1, 0.1],
-                    #     normalized=True,
-                    #     border_mode=cv2.BORDER_CONSTANT,
-                    #     fill=(255, 255, 255),
-                    #     p=1.0,
-                    # ),
-                    A.ElasticTransform(
-                        alpha=10,
-                        sigma=60,
-                        same_dxdy=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ThinPlateSpline(
-                        scale_range=[0.02, 0.1],
-                        num_control_points=3,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                ],
-                p=0.3,
-            ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=0.6,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.3),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=0.6,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=0.6,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _noElastic_rare_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=0.6),
-            A.OneOf(
-                [
-                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-                ],
-                p=0.3,
-            ),
-            A.OneOf(
-                [
-                    A.GridDistortion(
-                        num_steps=5,
-                        distort_limit=[-0.1, 0.1],
-                        normalized=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    # A.ElasticTransform(
-                    #     alpha=10,
-                    #     sigma=60,
-                    #     same_dxdy=True,
-                    #     border_mode=cv2.BORDER_CONSTANT,
-                    #     fill=(255, 255, 255),
-                    #     p=1.0,
-                    # ),
-                    A.ThinPlateSpline(
-                        scale_range=[0.02, 0.1],
-                        num_control_points=3,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                ],
-                p=0.3,
-            ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=0.6,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.3),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=0.6,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=0.6,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _noThinPlate_rare_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=0.6),
-            A.OneOf(
-                [
-                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-                ],
-                p=0.3,
-            ),
-            A.OneOf(
-                [
-                    A.GridDistortion(
-                        num_steps=5,
-                        distort_limit=[-0.1, 0.1],
-                        normalized=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ElasticTransform(
-                        alpha=10,
-                        sigma=60,
-                        same_dxdy=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    # A.ThinPlateSpline(
-                    #     scale_range=[0.02, 0.1],
-                    #     num_control_points=3,
-                    #     border_mode=cv2.BORDER_CONSTANT,
-                    #     fill=(255, 255, 255),
-                    #     p=1.0,
-                    # ),
-                ],
-                p=0.3,
-            ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=0.6,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.3),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=0.6,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=0.6,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _noDistortion_rare_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=0.6),
-            A.OneOf(
-                [
-                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-                ],
-                p=0.3,
-            ),
-            # A.OneOf(
-            #     [
-            #         A.GridDistortion(
-            #             num_steps=5,
-            #             distort_limit=[-0.1, 0.1],
-            #             normalized=True,
-            #             border_mode=cv2.BORDER_CONSTANT,
-            #             fill=(255, 255, 255),
-            #             p=1.0,
-            #         ),
-            #         A.ElasticTransform(
-            #             alpha=10,
-            #             sigma=60,
-            #             same_dxdy=True,
-            #             border_mode=cv2.BORDER_CONSTANT,
-            #             fill=(255, 255, 255),
-            #             p=1.0,
-            #         ),
-            #         A.ThinPlateSpline(
-            #             scale_range=[0.02, 0.1],
-            #             num_control_points=3,
-            #             border_mode=cv2.BORDER_CONSTANT,
-            #             fill=(255, 255, 255),
-            #             p=1.0,
-            #         ),
-            #     ],
-            #     p=0.3,
-            # ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=0.6,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.3),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=0.6,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=0.6,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _noMorph_rare_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=0.6),
-            # A.OneOf(
-            #     [
-            #         A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-            #         A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-            #     ],
-            #     p=0.3,
-            # ),
-            A.OneOf(
-                [
-                    A.GridDistortion(
-                        num_steps=4,
-                        distort_limit=[-0.25, 0.25],
-                        normalized=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ElasticTransform(
-                        alpha=20,
-                        sigma=50,
-                        same_dxdy=False,
-                        noise_distribution="gaussian",
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ThinPlateSpline(
-                        scale_range=[0.02, 0.04],
-                        num_control_points=3,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                ],
-                p=0.3,
-            ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=0.6,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.3),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=0.6,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=0.6,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _noDistort_rare_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=0.6),
-            A.OneOf(
-                [
-                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-                ],
-                p=0.3,
-            ),
-            # A.OneOf(
-            #     [
-            #         A.GridDistortion(
-            #             num_steps=4,
-            #             distort_limit=[-0.25, 0.25],
-            #             normalized=True,
-            #             border_mode=cv2.BORDER_CONSTANT,
-            #             fill=(255, 255, 255),
-            #             p=1.0,
-            #         ),
-            #         A.ElasticTransform(
-            #             alpha=20,
-            #             sigma=50,
-            #             same_dxdy=False,
-            #             noise_distribution="gaussian",
-            #             border_mode=cv2.BORDER_CONSTANT,
-            #             fill=(255, 255, 255),
-            #             p=1.0,
-            #         ),
-            #         A.ThinPlateSpline(
-            #             scale_range=[0.02, 0.04],
-            #             num_control_points=3,
-            #             border_mode=cv2.BORDER_CONSTANT,
-            #             fill=(255, 255, 255),
-            #             p=1.0,
-            #         ),
-            #     ],
-            #     p=0.3,
-            # ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=0.6,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.3),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=0.6,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=0.6,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _moderate_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=0.8),
-            A.OneOf(
-                [
-                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-                ],
-                p=0.5,
-            ),
-            A.OneOf(
-                [
-                    A.GridDistortion(
-                        num_steps=4,
-                        distort_limit=[-0.25, 0.25],
-                        normalized=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ElasticTransform(
-                        alpha=20,
-                        sigma=50,
-                        same_dxdy=False,
-                        noise_distribution="gaussian",
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ThinPlateSpline(
-                        scale_range=[0.02, 0.04],
-                        num_control_points=3,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                ],
-                p=0.5,
-            ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=0.8,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.5),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=0.8,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=0.8,
-            ),
-        ],
-        p=prob,
-        seed=seed,
-    )
-
-
-def _often_transform(prob=1.0, seed=None):
-    return A.Compose(
-        [
-            A.Lambda(image=random_padding, p=1.0),
-            A.OneOf(
-                [
-                    A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
-                    A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
-                ],
-                p=0.8,
-            ),
-            A.OneOf(
-                [
-                    A.GridDistortion(
-                        num_steps=4,
-                        distort_limit=[-0.25, 0.25],
-                        normalized=True,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ElasticTransform(
-                        alpha=20,
-                        sigma=50,
-                        same_dxdy=False,
-                        noise_distribution="gaussian",
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                    A.ThinPlateSpline(
-                        scale_range=[0.02, 0.04],
-                        num_control_points=3,
-                        border_mode=cv2.BORDER_CONSTANT,
-                        fill=(255, 255, 255),
-                        p=1.0,
-                    ),
-                ],
-                p=0.8,
-            ),
-            A.Affine(
-                scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                rotate=(-2, 2),
-                shear=(-3, 3),
-                fit_output=True,
-                border_mode=cv2.BORDER_CONSTANT,
-                fill=(255, 255, 255),
-                p=1.0,
-            ),
-            A.GaussNoise(std_range=(0.05, 0.25), mean_range=(-0.3, 0.3), p=0.8),
-            A.OneOf(
-                [
-                    A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=1.0),
-                    A.Downscale(scale_range=(0.75, 0.95), p=1.0),
-                ],
-                p=1.0,
-            ),
-            A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
-                ensure_safe_range=True,
-                p=1.0,
             ),
         ],
         p=prob,
