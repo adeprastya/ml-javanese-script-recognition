@@ -28,13 +28,13 @@ def random_padding(img, **kwargs):
 def augmentation_transform(prob=1.0, seed=None):
     return A.Compose(
         [
-            A.Lambda(image=random_padding, p=0.6),
+            A.Lambda(image=random_padding, p=0.5),
             A.OneOf(
                 [
                     A.Morphological(scale=[3, 5], operation="dilation", p=1.0),
                     A.Morphological(scale=[3, 5], operation="erosion", p=1.0),
                 ],
-                p=0.3,
+                p=0.5,
             ),
             A.Affine(
                 scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
@@ -43,15 +43,15 @@ def augmentation_transform(prob=1.0, seed=None):
                 fit_output=True,
                 border_mode=cv2.BORDER_CONSTANT,
                 fill=(255, 255, 255),
-                p=0.6,
+                p=0.5,
             ),
-            A.GaussNoise(std_range=(0.02, 0.1), mean_range=(-0.2, 0.2), p=0.3),
-            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=0.3),
+            A.GaussNoise(std_range=(0.02, 0.1), mean_range=(-0.2, 0.2), p=0.5),
+            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=0.5),
             A.RandomBrightnessContrast(
-                brightness_limit=(-0.4, 0.4),
-                contrast_limit=(-0.4, 0.4),
+                brightness_limit=(-0.3, 0.3),
+                contrast_limit=(-0.3, 0.3),
                 ensure_safe_range=True,
-                p=0.6,
+                p=0.5,
             ),
         ],
         p=prob,
@@ -59,7 +59,7 @@ def augmentation_transform(prob=1.0, seed=None):
     )
 
 
-def _all_augmentation_transform(prob=1.0, seed=None):
+def _dep_all_augmentation_transform(prob=1.0, seed=None):
     return A.Compose(
         [
             A.Lambda(image=random_padding, p=0.6),
