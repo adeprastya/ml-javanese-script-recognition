@@ -15,12 +15,13 @@ def random_padding(img, **kwargs):
     else:
         FILL = (255, 255, 255)
 
-    MAX_PADDING = 20
+    MAX_HORIZONTAL_PAD = 20
+    MAX_VERTICAL_PAD = 10
 
-    pl = np.random.randint(0, MAX_PADDING + 1)
-    pr = np.random.randint(0, MAX_PADDING + 1)
-    pt = np.random.randint(0, MAX_PADDING // 2 + 1)
-    pb = np.random.randint(0, MAX_PADDING // 2 + 1)
+    pl = np.random.randint(0, MAX_HORIZONTAL_PAD + 1)
+    pr = np.random.randint(0, MAX_HORIZONTAL_PAD + 1)
+    pt = np.random.randint(0, MAX_VERTICAL_PAD + 1)
+    pb = np.random.randint(0, MAX_VERTICAL_PAD + 1)
 
     return cv2.copyMakeBorder(img, pt, pb, pl, pr, cv2.BORDER_CONSTANT, value=FILL)
 

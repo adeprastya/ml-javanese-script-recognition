@@ -54,19 +54,19 @@ def main():
 
     print("Loading Config...")
 
-    MODEL_NAME = "null"
+    MODEL_NAME = "70-epoch"
 
     CNN_LAYER = 5
     BILSTM_LAYER = 2
 
     LEARNING_RATE = 1e-4
 
-    EPOCHS = 50
+    EPOCHS = 70
     EARLY_STOP_PATIENCE = 7
     CER_EPS = 1e-3
     LOSS_EPS = 1e-4
 
-    IMG_HEIGHT = 64
+    IMG_HEIGHT = 48
     BATCH_SIZE = 8
     NUM_WORKERS = 3
 
