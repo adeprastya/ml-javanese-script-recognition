@@ -52,27 +52,30 @@ def main():
     # CONFIG
     # =======================
 
-    print("Loading Config...")
+    print("Loading config...")
 
-    MODEL_NAME = "70-epoch"
+    MODEL_NAME = "null"
 
     CNN_LAYER = 5
     BILSTM_LAYER = 2
 
+    EPOCHS = 50
     LEARNING_RATE = 1e-4
 
-    EPOCHS = 70
-    EARLY_STOP_PATIENCE = 7
     CER_EPS = 1e-3
     LOSS_EPS = 1e-4
 
-    IMG_HEIGHT = 48
-    BATCH_SIZE = 8
+    BATCH_SIZE = 32
     NUM_WORKERS = 3
+    IMG_HEIGHT = 48
 
     MODEL_DIR = f"{PROJECT_ROOT}/builds/{MODEL_NAME}"
     BASE_SYNT_DIR = f"{PROJECT_ROOT}/dataset/word_nglegena_synthetic_20260130_155231"
     BASE_REAL_DIR = f"{PROJECT_ROOT}/dataset/word_nglegena_handwritten_20260130_155805"
+
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    if os.listdir(MODEL_DIR):
+        raise RuntimeError("Model directory is not empty")
 
     DATA_SOURCES = {
         "train": [
@@ -112,10 +115,6 @@ def main():
             # },
         ],
     }
-
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    if os.listdir(MODEL_DIR):
-        raise RuntimeError("Model directory is not empty")
 
     # =======================
     # DATA
@@ -196,9 +195,6 @@ def main():
     )
     criterion = nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=3
-    )
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -219,11 +215,6 @@ def main():
     best_cer = float("inf")
     best_val_loss_cp = float("inf")
 
-    best_val_loss_es = float("inf")
-    trigger_times = 0
-    early_stopped = False
-    early_stopped_at = None
-
     for epoch in range(EPOCHS):
         train_loss, step = train_one_epoch(
             model,
@@ -243,13 +234,6 @@ def main():
 
         cer = batch_cer(all_preds, all_refs)
         em = batch_em(all_preds, all_refs)
-
-        # ---------- SCHEDULER ----------
-        if scheduler is not None:
-            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                scheduler.step(val_loss)
-            else:
-                scheduler.step()
 
         # ---------- LOG ----------
         log_line = {
@@ -279,7 +263,6 @@ def main():
                 {
                     "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
-                    "scheduler": scheduler.state_dict() if scheduler else None,
                     "best_cer": best_cer,
                     "val_loss": val_loss,
                     "epoch": epoch + 1,
@@ -289,34 +272,11 @@ def main():
             )
             print(">> Saved best model")
 
-        # ---------- EARLY STOPPING ----------
-        if val_loss < best_val_loss_es - LOSS_EPS:
-            best_val_loss_es = val_loss
-            trigger_times = 0
-        else:
-            trigger_times += 1
-            if (trigger_times >= EARLY_STOP_PATIENCE) and (not early_stopped):
-                early_stopped = True
-                early_stopped_at = epoch
-                print(f"## Early stopping triggered at epoch {epoch+1}")
-                torch.save(
-                    {
-                        "model": model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "scheduler": scheduler.state_dict() if scheduler else None,
-                        "epoch": epoch + 1,
-                        "step": global_step,
-                    },
-                    f"{MODEL_DIR}/stopped_model.pth",
-                )
-                print(">> Saved early stopped model")
-
     # ---------- FINAL SAVE ----------
     torch.save(
         {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
-            "scheduler": scheduler.state_dict() if scheduler else None,
             "epoch": epoch + 1,
             "step": global_step,
         },
@@ -350,17 +310,13 @@ def main():
         val_ds=val_ds,
         datasets=DATA_SOURCES,
         optimizer=optimizer,
-        scheduler=scheduler,
         criterion=criterion,
         epochs=EPOCHS,
-        early_stop_patience=EARLY_STOP_PATIENCE,
         batch_size=BATCH_SIZE,
         epoch_logs=epoch_logs,
         train_start_wall=train_start_wall,
         train_end_wall=train_end_wall,
         train_duration_sec=train_duration_sec,
-        early_stopped=early_stopped,
-        early_stopped_at=early_stopped_at,
         best_val_cer=best_cer,
         best_val_loss=best_val_loss_cp,
     )
@@ -374,7 +330,6 @@ def main():
 
     model_paths = [
         f"{MODEL_DIR}/best_model.pth",
-        f"{MODEL_DIR}/stopped_model.pth",
         f"{MODEL_DIR}/last_model.pth",
     ]
 
@@ -402,7 +357,9 @@ def main():
         em_val = batch_em(all_preds, all_refs)
         print(f"{model_name}: CER={cer_val:.4f}, EM={em_val:.4f}")
 
-    save_test_result(MODEL_NAME, all_results, MODEL_DIR, "test_results.json")
+    save_test_result(
+        MODEL_NAME, DATA_SOURCES, test_ds, all_results, MODEL_DIR, "test_results.json"
+    )
 
 
 if __name__ == "__main__":
