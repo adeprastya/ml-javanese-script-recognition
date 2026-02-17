@@ -65,7 +65,7 @@ def main():
     CER_EPS = 1e-3
     LOSS_EPS = 1e-4
 
-    BATCH_SIZE = 32
+    BATCH_SIZE = 16
     NUM_WORKERS = 3
     IMG_HEIGHT = 48
 

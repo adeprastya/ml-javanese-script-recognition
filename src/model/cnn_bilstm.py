@@ -5,8 +5,10 @@ class CNNBiLSTM(nn.Module):
     def __init__(self, num_classes: int, cnn_layers: int, rnn_layers: int):
         super().__init__()
 
-        if cnn_layers not in [3, 5, 7]:
-            raise ValueError(f"Invalid cnn_layers: {cnn_layers}, must be 3, 5, or 7.")
+        if cnn_layers not in [3, 4, 5, 6, 7]:
+            raise ValueError(
+                f"Invalid cnn_layers: {cnn_layers}, must be 3, 4, 5, 6, or 7."
+            )
         if rnn_layers not in [1, 2, 3]:
             raise ValueError(f"Invalid rnn_layers: {rnn_layers}, must be 1, 2, or 3.")
 
@@ -31,6 +33,30 @@ class CNNBiLSTM(nn.Module):
                 # Global Pool
                 nn.AdaptiveAvgPool2d((1, None)),  # 6 -> 1
             )
+        elif cnn_layers == 4:
+            self.cnn = nn.Sequential(
+                # Block 1
+                nn.Conv2d(1, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=(2, 2)),  # 48 -> 24
+                # Block 2
+                nn.Conv2d(64, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=(2, 2)),  # 24 -> 12
+                # Block 3
+                nn.Conv2d(128, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                # Block 4
+                nn.Conv2d(128, 256, kernel_size=3, padding=1),
+                nn.BatchNorm2d(256),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=(2, 1)),  # 12 -> 6
+                # Global Pool
+                nn.AdaptiveAvgPool2d((1, None)),  # 6 -> 1
+            )
         elif cnn_layers == 5:
             self.cnn = nn.Sequential(
                 # Block 1
@@ -40,6 +66,7 @@ class CNNBiLSTM(nn.Module):
                 nn.MaxPool2d(kernel_size=(2, 2)),  # 48 -> 24
                 # Block 2
                 nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64),
                 nn.ReLU(inplace=True),
                 # Block 3
                 nn.Conv2d(64, 128, kernel_size=3, padding=1),
@@ -48,8 +75,41 @@ class CNNBiLSTM(nn.Module):
                 nn.MaxPool2d(kernel_size=(2, 2)),  # 24 -> 12
                 # Block 4
                 nn.Conv2d(128, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
                 nn.ReLU(inplace=True),
                 # Block 5
+                nn.Conv2d(128, 256, kernel_size=3, padding=1),
+                nn.BatchNorm2d(256),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=(2, 1)),  # 12 -> 6
+                # Global Pool
+                nn.AdaptiveAvgPool2d((1, None)),  # 6 -> 1
+            )
+        elif cnn_layers == 6:
+            self.cnn = nn.Sequential(
+                # Block 1
+                nn.Conv2d(1, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=(2, 2)),  # 48 -> 24
+                # Block 2
+                nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                # Block 3
+                nn.Conv2d(64, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=(2, 2)),  # 24 -> 12
+                # Block 4
+                nn.Conv2d(128, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                # Block 5
+                nn.Conv2d(128, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                # Block 6
                 nn.Conv2d(128, 256, kernel_size=3, padding=1),
                 nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True),
@@ -66,9 +126,11 @@ class CNNBiLSTM(nn.Module):
                 nn.MaxPool2d(kernel_size=(2, 2)),  # 48 -> 24
                 # Block 2
                 nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64),
                 nn.ReLU(inplace=True),
                 # Block 3
                 nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64),
                 nn.ReLU(inplace=True),
                 # Block 4
                 nn.Conv2d(64, 128, kernel_size=3, padding=1),
@@ -77,9 +139,11 @@ class CNNBiLSTM(nn.Module):
                 nn.MaxPool2d(kernel_size=(2, 2)),  # 24 -> 12
                 # Block 5
                 nn.Conv2d(128, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
                 nn.ReLU(inplace=True),
                 # Block 6
                 nn.Conv2d(128, 128, kernel_size=3, padding=1),
+                nn.BatchNorm2d(128),
                 nn.ReLU(inplace=True),
                 # Block 7
                 nn.Conv2d(128, 256, kernel_size=3, padding=1),
