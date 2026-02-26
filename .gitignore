@@ -1,3 +1,6 @@
+# Code Editor
+.vscode/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -5,7 +8,5 @@ __pycache__/
 
 # Project
 fonts/
-
 dataset/
-
 builds/
