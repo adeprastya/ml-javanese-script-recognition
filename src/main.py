@@ -1,365 +1,367 @@
+import json
+import time
+from datetime import datetime
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+
+from data.vocabulary import BLANK_IDX, NUM_CLASSES
+from transform.augmentation import get_augmentation_pipeline
+from transform.preprocessing import get_preprocessing_pipeline
+from model.cnn_bilstm import CNNBiLSTM
+from training.test import test_one_epoch
+from training.train import train_one_epoch
+from training.validate import validate_one_epoch
+from metric.ocr_metrics import batch_cer, batch_em
+from training.logging import (
+    save_training_logs,
+    save_training_plots,
+    save_test_result,
+    save_test_plots,
+)
+from utils.seeder import set_seed
+from utils.dataloader import create_dataloaders
+from utils.logger import setup_logging
+from utils.checkpoint import save_checkpoint
+from utils.path import PROJECT_ROOT
+
+
+# ============================================================================
+# CONFIGURATION & DATA SOURCES
+# ============================================================================
+
+CONFIG = {
+    # Experiment
+    "model_name": "null",
+    "seed": 42,
+    # Model Architecture
+    "cnn_layers": 5,
+    "rnn_layers": 2,
+    # Training
+    "epochs": 50,
+    "batch_size": 16,
+    "learning_rate": 1e-4,
+    "grad_clip": 5.0,
+    # Data
+    "img_height": 48,
+    "num_workers": 3,
+    # Checkpointing
+    "cer_eps": 1e-3,
+    "loss_eps": 1e-4,
+}
+
+
+BASE_SYNT_DIR = "dataset/word_nglegena_synthetic_20260130_155231"
+BASE_REAL_DIR = "dataset/word_nglegena_handwritten_20260130_155805"
+DATA_SOURCES = {
+    "train": [
+        {
+            "csv": f"{BASE_SYNT_DIR}/label_train.csv",
+            "img_dir": f"{BASE_SYNT_DIR}/image_train",
+            "aug": get_augmentation_pipeline(prob=1.0, seed=CONFIG["seed"]),
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+        # {
+        #     "csv": f"{BASE_REAL_DIR}/label_2.csv",
+        #     "img_dir": f"{BASE_REAL_DIR}/image_2",
+        #     "aug": get_augmentation_pipeline(prob=1.0, seed=CONFIG["seed"]),
+        #     "prep": get_preprocessing_pipeline(
+        #         img_height=CONFIG["img_height"], enhance=False
+        #     ),
+        # },
+        # {
+        #     "csv": f"{BASE_REAL_DIR}/label_5.csv",
+        #     "img_dir": f"{BASE_REAL_DIR}/image_5",
+        #     "aug": None,
+        #     "prep": get_preprocessing_pipeline(
+        #         img_height=CONFIG["img_height"], enhance=False
+        #     ),
+        # },
+    ],
+    "val": [
+        {
+            "csv": f"{BASE_SYNT_DIR}/label_val.csv",
+            "img_dir": f"{BASE_SYNT_DIR}/image_val",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+    ],
+    "test": [
+        {
+            "csv": f"{BASE_REAL_DIR}/label_1.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_1",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+        {
+            "csv": f"{BASE_REAL_DIR}/label_2.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_2",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+        {
+            "csv": f"{BASE_REAL_DIR}/label_3.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_3",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+        {
+            "csv": f"{BASE_REAL_DIR}/label_4.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_4",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+        {
+            "csv": f"{BASE_REAL_DIR}/label_5.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_5",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+        {
+            "csv": f"{BASE_REAL_DIR}/label_6.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_6",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(
+                img_height=CONFIG["img_height"], enhance=False
+            ),
+        },
+    ],
+}
+
+
+# ============================================================================
+# MAIN TRAINING FUNCTION
+# ============================================================================
+
+
 def main():
-    print("Importing modules...")
+    # Setup directories
+    model_dir = Path(PROJECT_ROOT) / "builds" / CONFIG["model_name"]
+    model_dir.mkdir(parents=True, exist_ok=True)
 
-    import os
-    import time
-    import random
-    from datetime import datetime
+    if list(model_dir.iterdir()):
+        raise RuntimeError(f"Model directory is not empty: {model_dir}")
 
-    import numpy as np
+    # Setup logging
+    logger = setup_logging(model_dir / "training.log")
+    logger.info(f"Starting experiment: {CONFIG['model_name']}")
+    logger.info(f"Configuration: {json.dumps(CONFIG, indent=2)}")
 
-    import torch
-    import torch.nn as nn
-    from torch.utils.data import DataLoader, ConcatDataset
+    # Device setup
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"Using device: {device}")
 
-    from utils.path import PROJECT_ROOT
-    from data.vocabulary import NUM_CLASSES, BLANK_IDX
-    from data.dataset import JavaneseOCRDataset
-    from data.collate import ctc_collate
-    from model.cnn_bilstm import CNNBiLSTM
-    from metric.ocr_metrics import batch_cer, batch_em
-    from transform.augmentation import augmentation_transform
-    from transform.preprocessing import preprocessing_transform
-    from training.train import train_one_epoch
-    from training.validate import validate_one_epoch
-    from training.test import test_one_epoch
-    from training.logging import (
-        save_training_logs,
-        save_training_plot,
-        save_test_result,
+    # Reproducibility
+    logger.info(f"Setting seed: {CONFIG['seed']}")
+    generator = set_seed(CONFIG["seed"])
+
+    # Create dataloaders
+    logger.info("Loading datasets...")
+    train_loader, val_loader, test_loader, train_ds, val_ds, test_ds = (
+        create_dataloaders(
+            DATA_SOURCES,
+            CONFIG["batch_size"],
+            CONFIG["num_workers"],
+            device,
+            generator,
+        )
     )
+    logger.info(f"Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(test_ds)}")
 
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", DEVICE)
+    # Build model
+    logger.info("Building model...")
+    model = CNNBiLSTM(
+        num_classes=NUM_CLASSES,
+        cnn_layers=CONFIG["cnn_layers"],
+        rnn_layers=CONFIG["rnn_layers"],
+    ).to(device)
 
-    # =======================
-    # REPRODUCIBILITY
-    # =======================
-
-    print("Setting reproducibility...")
-
-    SEED = 42
-    random.seed(SEED)
-    np.random.seed(SEED)
-    torch.manual_seed(SEED)
-    torch.cuda.manual_seed_all(SEED)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    generator = torch.Generator()
-    generator.manual_seed(SEED)
-
-    # =======================
-    # CONFIG
-    # =======================
-
-    print("Loading config...")
-
-    MODEL_NAME = "null"
-
-    CNN_LAYER = 5
-    BILSTM_LAYER = 2
-
-    EPOCHS = 50
-    LEARNING_RATE = 1e-4
-
-    CER_EPS = 1e-3
-    LOSS_EPS = 1e-4
-
-    BATCH_SIZE = 16
-    NUM_WORKERS = 3
-    IMG_HEIGHT = 48
-
-    MODEL_DIR = f"{PROJECT_ROOT}/builds/{MODEL_NAME}"
-    BASE_SYNT_DIR = f"{PROJECT_ROOT}/dataset/word_nglegena_synthetic_20260130_155231"
-    BASE_REAL_DIR = f"{PROJECT_ROOT}/dataset/word_nglegena_handwritten_20260130_155805"
-
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    if os.listdir(MODEL_DIR):
-        raise RuntimeError("Model directory is not empty")
-
-    DATA_SOURCES = {
-        "train": [
-            {
-                "csv": f"{BASE_SYNT_DIR}/label_train.csv",
-                "img_dir": f"{BASE_SYNT_DIR}/image_train",
-                "aug": augmentation_transform(prob=1.0, seed=SEED),
-                "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=False),
-            },
-        ],
-        "val": [
-            {
-                "csv": f"{BASE_SYNT_DIR}/label_val.csv",
-                "img_dir": f"{BASE_SYNT_DIR}/image_val",
-                "aug": None,
-                "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=False),
-            },
-        ],
-        "test": [
-            {
-                "csv": f"{BASE_REAL_DIR}/label_1.csv",
-                "img_dir": f"{BASE_REAL_DIR}/image_1",
-                "aug": None,
-                "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=False),
-            },
-            {
-                "csv": f"{BASE_REAL_DIR}/label_2.csv",
-                "img_dir": f"{BASE_REAL_DIR}/image_2",
-                "aug": None,
-                "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=False),
-            },
-            # {
-            #     "csv": f"{PROJECT_ROOT}/dataset/test-sample/label.csv",
-            #     "img_dir": f"{PROJECT_ROOT}/dataset/test-sample/image",
-            #     "aug": None,
-            #     "prep": preprocessing_transform(img_height=IMG_HEIGHT, enhance=True),
-            # },
-        ],
-    }
-
-    # =======================
-    # DATA
-    # =======================
-
-    print("Loading data...")
-
-    train_ds = ConcatDataset(
-        [
-            JavaneseOCRDataset(
-                str(src["csv"]),
-                str(src["img_dir"]),
-                preprocessing=src["prep"],
-                augmentation=src["aug"],
-            )
-            for src in DATA_SOURCES["train"]
-        ]
-    )
-    val_ds = ConcatDataset(
-        [
-            JavaneseOCRDataset(
-                str(src["csv"]),
-                str(src["img_dir"]),
-                preprocessing=src["prep"],
-                augmentation=src["aug"],
-            )
-            for src in DATA_SOURCES["val"]
-        ]
-    )
-    test_ds = ConcatDataset(
-        [
-            JavaneseOCRDataset(
-                str(src["csv"]),
-                str(src["img_dir"]),
-                preprocessing=src["prep"],
-                augmentation=src["aug"],
-            )
-            for src in DATA_SOURCES["test"]
-        ]
-    )
-
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        num_workers=NUM_WORKERS,
-        pin_memory=(DEVICE.type == "cuda"),
-        collate_fn=ctc_collate,
-        generator=generator,
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=NUM_WORKERS,
-        pin_memory=(DEVICE.type == "cuda"),
-        collate_fn=ctc_collate,
-        generator=generator,
-    )
-    test_loader = DataLoader(
-        test_ds,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=NUM_WORKERS,
-        pin_memory=(DEVICE.type == "cuda"),
-        collate_fn=ctc_collate,
-        generator=generator,
-    )
-
-    # =======================
-    # MODEL
-    # =======================
-
-    print("Building model...")
-
-    model = CNNBiLSTM(NUM_CLASSES, cnn_layers=CNN_LAYER, rnn_layers=BILSTM_LAYER).to(
-        DEVICE
-    )
     criterion = nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
 
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total parameters: {total_params}, Trainable parameters: {trainable_params}")
+    model_info = model.get_model_info()
+    logger.info(f"Model: {model_info}")
 
-    # =======================
-    # TRAINING
-    # =======================
-
-    print("Training model...")
-
+    # Training loop
+    logger.info("Starting training...")
     epoch_logs = []
-    start_time = time.time()
-    train_start_wall = datetime.now()
+    train_start = datetime.now()
     train_start_ts = time.time()
 
     global_step = 0
     best_cer = float("inf")
-    best_val_loss_cp = float("inf")
+    best_val_loss = float("inf")
 
-    for epoch in range(EPOCHS):
-        train_loss, step = train_one_epoch(
-            model,
-            train_loader,
-            criterion,
-            optimizer,
-            DEVICE,
-        )
-        global_step += step
-
-        val_loss, all_preds, all_refs = validate_one_epoch(
-            model,
-            val_loader,
-            criterion,
-            DEVICE,
-        )
-
-        cer = batch_cer(all_preds, all_refs)
-        em = batch_em(all_preds, all_refs)
-
-        # ---------- LOG ----------
-        log_line = {
-            "epoch": epoch + 1,
-            "train_loss": float(train_loss),
-            "val_loss": float(val_loss),
-            "cer": float(cer),
-            "em": float(em),
-            "global_step": global_step,
-        }
-        print(
-            f"Epoch {epoch+1:02d} | "
-            f"Train Loss: {train_loss:.4f} | "
-            f"Val Loss: {val_loss:.4f} | "
-            f"CER: {cer:.4f} | "
-            f"EM: {em:.4f}"
-        )
-        epoch_logs.append(log_line)
-
-        # -------- CHECKPOINT SAVE ---------
-        if (cer < best_cer - CER_EPS) or (
-            abs(cer - best_cer) <= CER_EPS and val_loss < best_val_loss_cp - LOSS_EPS
-        ):
-            best_cer = cer
-            best_val_loss_cp = val_loss
-            torch.save(
-                {
-                    "model": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "best_cer": best_cer,
-                    "val_loss": val_loss,
-                    "epoch": epoch + 1,
-                    "step": global_step,
-                },
-                f"{MODEL_DIR}/best_model.pth",
+    try:
+        for epoch in range(CONFIG["epochs"]):
+            # Train
+            train_loss, num_steps = train_one_epoch(
+                model,
+                train_loader,
+                criterion,
+                optimizer,
+                device,
+                CONFIG["grad_clip"],
             )
-            print(">> Saved best model")
+            global_step += num_steps
 
-    # ---------- FINAL SAVE ----------
-    torch.save(
-        {
-            "model": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "epoch": epoch + 1,
-            "step": global_step,
-        },
-        f"{MODEL_DIR}/last_model.pth",
+            # Validate
+            val_loss, all_preds, all_refs = validate_one_epoch(
+                model, val_loader, criterion, device
+            )
+
+            # Metrics
+            cer = batch_cer(all_preds, all_refs)
+            em = batch_em(all_preds, all_refs)
+
+            # Log
+            log_line = {
+                "epoch": epoch + 1,
+                "train_loss": float(train_loss),
+                "val_loss": float(val_loss),
+                "cer": float(cer),
+                "em": float(em),
+                "global_step": global_step,
+            }
+            epoch_logs.append(log_line)
+
+            logger.info(
+                f"Epoch {epoch+1:02d}/{CONFIG['epochs']} | "
+                f"Train Loss: {train_loss:.4f} | "
+                f"Val Loss: {val_loss:.4f} | "
+                f"CER: {cer:.4f} | "
+                f"EM: {em:.4f}"
+            )
+
+            # Save best model
+            is_best = False
+            if cer < best_cer - CONFIG["cer_eps"]:
+                is_best = True
+            elif (
+                abs(cer - best_cer) <= CONFIG["cer_eps"]
+                and val_loss < best_val_loss - CONFIG["loss_eps"]
+            ):
+                is_best = True
+
+            if is_best:
+                best_cer = cer
+                best_val_loss = val_loss
+                save_checkpoint(
+                    model,
+                    optimizer,
+                    epoch + 1,
+                    global_step,
+                    val_loss,
+                    cer,
+                    model_dir / "best_model.pth",
+                    logger,
+                )
+
+    except KeyboardInterrupt:
+        logger.warning("Training interrupted by user")
+    except Exception as e:
+        logger.error(f"Training failed: {e}", exc_info=True)
+        raise
+
+    # Save final model
+    save_checkpoint(
+        model,
+        optimizer,
+        CONFIG["epochs"],
+        global_step,
+        val_loss,
+        cer,
+        model_dir / "last_model.pth",
+        logger,
     )
-    print(">> Saved last model")
 
-    # =======================
-    # TRAINING LOGGING
-    # =======================
+    # Training summary
+    train_end = datetime.now()
+    train_duration_sec = int(time.time() - train_start_ts)
+    hours, remainder = divmod(train_duration_sec, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    logger.info(f"Training finished in {hours}h {minutes}m {seconds}s")
 
-    print("Creating logs...")
-
-    train_end_wall = datetime.now()
-    train_end_ts = time.time()
-    train_duration_sec = int(train_end_ts - train_start_ts)
-    duration = int(time.time() - start_time)
-
-    print(
-        f"Training finished in {duration // 3600}h {duration % 3600 // 60}m {duration % 60}s"
-    )
+    # Save training logs
+    logger.info("Saving training logs...")
     save_training_logs(
-        model_dir=MODEL_DIR,
-        model_name=MODEL_NAME,
-        device=DEVICE,
-        cnn_layers=CNN_LAYER,
-        bilstm_layers=BILSTM_LAYER,
-        total_params=total_params,
-        trainable_params=trainable_params,
+        model_dir=str(model_dir),
+        model_name=CONFIG["model_name"],
+        model=model,
+        config=CONFIG,
+        device=device,
+        cnn_layers=CONFIG["cnn_layers"],
+        bilstm_layers=CONFIG["rnn_layers"],
+        total_params=model_info["total_params"],
+        trainable_params=model_info["trainable_params"],
         train_ds=train_ds,
         val_ds=val_ds,
         datasets=DATA_SOURCES,
         optimizer=optimizer,
         criterion=criterion,
-        epochs=EPOCHS,
-        batch_size=BATCH_SIZE,
+        epochs=CONFIG["epochs"],
+        batch_size=CONFIG["batch_size"],
         epoch_logs=epoch_logs,
-        train_start_wall=train_start_wall,
-        train_end_wall=train_end_wall,
+        train_start_wall=train_start,
+        train_end_wall=train_end,
         train_duration_sec=train_duration_sec,
         best_val_cer=best_cer,
-        best_val_loss=best_val_loss_cp,
+        best_val_loss=best_val_loss,
     )
-    save_training_plot(epoch_logs, MODEL_DIR)
+    save_training_plots(epoch_logs, str(model_dir))
 
-    # =======================
-    # TESTING
-    # =======================
-
-    print("Testing model...")
-
-    model_paths = [
-        f"{MODEL_DIR}/best_model.pth",
-        f"{MODEL_DIR}/last_model.pth",
-    ]
-
+    # Testing
+    logger.info("Running test evaluation...")
     all_results = {}
 
-    for path in model_paths:
-        model_name = os.path.basename(path).replace(".pth", "")
+    for model_name in ["best_model", "last_model"]:
+        model_path = model_dir / f"{model_name}.pth"
 
-        if not os.path.exists(path):
-            print(f"## {model_name} not found, skipping")
+        if not model_path.exists():
+            logger.warning(f"{model_name} not found, skipping")
             continue
 
-        checkpoint = torch.load(path, map_location=DEVICE, weights_only=False)
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model"])
         model.eval()
 
-        all_preds, all_refs, all_imgs = test_one_epoch(model, test_loader, DEVICE)
+        all_preds, all_refs, all_imgs = test_one_epoch(model, test_loader, device)
         all_results[model_name] = {
             "imgs": all_imgs,
             "preds": all_preds,
             "refs": all_refs,
         }
 
-        cer_val = batch_cer(all_preds, all_refs)
-        em_val = batch_em(all_preds, all_refs)
-        print(f"{model_name}: CER={cer_val:.4f}, EM={em_val:.4f}")
+        test_cer = batch_cer(all_preds, all_refs)
+        test_em = batch_em(all_preds, all_refs)
+        logger.info(f"{model_name}: CER={test_cer:.4f}, EM={test_em:.4f}")
 
     save_test_result(
-        MODEL_NAME, DATA_SOURCES, test_ds, all_results, MODEL_DIR, "test_results.json"
+        CONFIG["model_name"],
+        DATA_SOURCES,
+        test_ds,
+        all_results,
+        str(model_dir),
+        "test_results.json",
     )
+    save_test_plots(all_results, str(model_dir))
+
+    logger.info("Training completed successfully!")
 
 
 if __name__ == "__main__":
