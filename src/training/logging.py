@@ -230,25 +230,46 @@ def build_components(
 # ============================================================================
 
 
-def save_training_plots(epoch_logs: List[Dict], model_dir: str) -> None:
+def save_training_plots(epoch_logs: List[Dict], model_dir: str, config) -> None:
     """Generate training visualization plots."""
 
     model_dir = Path(model_dir)
 
     epochs = [e["epoch"] for e in epoch_logs]
     train_loss = [e["train_loss"] for e in epoch_logs]
-    val_loss = [e["val_loss"] for e in epoch_logs]
+    val_losses = [e["val_loss"] for e in epoch_logs]
     cer_vals = [e["cer"] for e in epoch_logs]
     em_vals = [e["em"] for e in epoch_logs]
 
     # Find best epoch
-    best_epoch_idx = np.argmin(cer_vals)
-    best_epoch = epochs[best_epoch_idx]
+    best_epoch = 0
+    for i in range(1, len(epoch_logs)):
+        cer = cer_vals[i]
+        em = em_vals[i]
+        val_loss = val_losses[i]
+
+        best_cer = cer_vals[best_epoch]
+        best_em = em_vals[best_epoch]
+        best_loss = val_losses[best_epoch]
+
+        # 1. Lowest CER check
+        if cer < best_cer - config["cer_eps"]:
+            best_epoch = i
+        # 2. Highest EM check
+        elif abs(cer - best_cer) <= config["cer_eps"] and em > best_em:
+            best_epoch = i
+        # 3. Lowest val loss
+        elif (
+            abs(cer - best_cer) <= config["cer_eps"]
+            and em >= best_em
+            and val_loss < best_loss - config["loss_eps"]
+        ):
+            best_epoch = i
 
     # 1. Loss Plot
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(epochs, train_loss, label="Train Loss", linewidth=2, alpha=0.8)
-    ax.plot(epochs, val_loss, label="Val Loss", linewidth=2, alpha=0.8)
+    ax.plot(epochs, val_losses, label="Val Loss", linewidth=2, alpha=0.8)
     ax.axvline(
         best_epoch,
         color="red",
@@ -399,8 +420,30 @@ def save_training_logs(
     cer_vals = [e["cer"] for e in epoch_logs]
     em_vals = [e["em"] for e in epoch_logs]
 
-    best_epoch_idx = np.argmin(cer_vals)
-    best_epoch = epoch_logs[best_epoch_idx]["epoch"]
+    # Find best epoch
+    best_epoch = 0
+    for i in range(1, len(epoch_logs)):
+        cer = cer_vals[i]
+        em = em_vals[i]
+        val_loss = val_losses[i]
+
+        best_cer = cer_vals[best_epoch]
+        best_em = em_vals[best_epoch]
+        best_loss = val_losses[best_epoch]
+
+        # 1. Lowest CER check
+        if cer < best_cer - config["cer_eps"]:
+            best_epoch = i
+        # 2. Highest EM check
+        elif abs(cer - best_cer) <= config["cer_eps"] and em > best_em:
+            best_epoch = i
+        # 3. Lowest val loss
+        elif (
+            abs(cer - best_cer) <= config["cer_eps"]
+            and em >= best_em
+            and val_loss < best_loss - config["loss_eps"]
+        ):
+            best_epoch = i
 
     train_loss_stats = compute_statistics(train_losses)
     val_loss_stats = compute_statistics(val_losses)
@@ -607,7 +650,7 @@ def save_training_logs(
     df.to_csv(csv_path, index=False)
 
     # 4. Generate plots
-    save_training_plots(epoch_logs, str(model_dir))
+    save_training_plots(epoch_logs, str(model_dir), config)
 
     return str(json_path), str(txt_path), str(csv_path)
 

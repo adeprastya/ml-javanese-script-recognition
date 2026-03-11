@@ -33,7 +33,7 @@ from utils.path import PROJECT_ROOT
 
 CONFIG = {
     # Experiment
-    "model_name": "null",
+    "model_name": "1_scenario_5cnn_2bilstm",
     "seed": 42,
     # Model Architecture
     "cnn_layers": 5,
@@ -63,23 +63,7 @@ DATA_SOURCES = {
             "prep": get_preprocessing_pipeline(
                 img_height=CONFIG["img_height"], enhance=False
             ),
-        },
-        # {
-        #     "csv": f"{BASE_REAL_DIR}/label_2.csv",
-        #     "img_dir": f"{BASE_REAL_DIR}/image_2",
-        #     "aug": get_augmentation_pipeline(prob=1.0, seed=CONFIG["seed"]),
-        #     "prep": get_preprocessing_pipeline(
-        #         img_height=CONFIG["img_height"], enhance=False
-        #     ),
-        # },
-        # {
-        #     "csv": f"{BASE_REAL_DIR}/label_5.csv",
-        #     "img_dir": f"{BASE_REAL_DIR}/image_5",
-        #     "aug": None,
-        #     "prep": get_preprocessing_pipeline(
-        #         img_height=CONFIG["img_height"], enhance=False
-        #     ),
-        # },
+        }
     ],
     "val": [
         {
@@ -323,7 +307,7 @@ def main():
         best_val_cer=best_cer,
         best_val_loss=best_val_loss,
     )
-    save_training_plots(epoch_logs, str(model_dir))
+    save_training_plots(epoch_logs, str(model_dir), CONFIG)
 
     # Testing
     logger.info("Running test evaluation...")
