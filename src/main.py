@@ -33,7 +33,7 @@ from utils.path import PROJECT_ROOT
 
 CONFIG = {
     # Experiment
-    "model_name": "1_scenario_5cnn_2bilstm",
+    "model_name": "model_name",
     "seed": 42,
     # Model Architecture
     "cnn_layers": 5,
