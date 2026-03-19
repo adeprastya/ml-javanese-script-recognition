@@ -10,7 +10,7 @@ from data.vocabulary import BLANK_IDX, NUM_CLASSES
 from transform.augmentation import get_augmentation_pipeline
 from transform.preprocessing import get_preprocessing_pipeline
 from model.cnn_bilstm import CNNBiLSTM
-from training.test import test_one_epoch
+from training.test import test_one_epoch, DecodeMethod
 from training.train import train_one_epoch
 from training.validate import validate_one_epoch
 from metric.ocr_metrics import batch_cer, batch_em
@@ -39,7 +39,7 @@ CONFIG = {
     "cnn_layers": 5,
     "rnn_layers": 2,
     # Training
-    "epochs": 50,
+    "epochs": 2,
     "batch_size": 16,
     "learning_rate": 1e-4,
     "grad_clip": 5.0,
@@ -324,7 +324,14 @@ def main():
         model.load_state_dict(checkpoint["model"])
         model.eval()
 
-        all_preds, all_refs, all_imgs = test_one_epoch(model, test_loader, device)
+        all_preds, all_refs, all_imgs = test_one_epoch(
+            model,
+            test_loader,
+            device,
+            decode_method=DecodeMethod.BEST_PATH,
+            beam_width=0,
+            verbose=False,
+        )
         all_results[model_name] = {
             "imgs": all_imgs,
             "preds": all_preds,

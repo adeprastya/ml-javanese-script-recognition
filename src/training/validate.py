@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data.vocabulary import IDX2CHAR
-from decoding.ctc_decoder import ctc_greedy_decode, decode_targets
+from decoding.ctc_decoder import best_path_decode, decode_targets
 
 
 @torch.no_grad()
@@ -66,7 +66,7 @@ def validate_one_epoch(
 
         # Decode predictions (move to CPU for decoding)
         pred_indices = logits.argmax(dim=2).cpu()  # [B, T]
-        preds = [ctc_greedy_decode(seq, IDX2CHAR) for seq in pred_indices]
+        preds = [best_path_decode(seq, IDX2CHAR, blank=0) for seq in pred_indices]
 
         # Decode ground truth
         refs = decode_targets(labels.cpu(), label_lens.cpu(), IDX2CHAR)
