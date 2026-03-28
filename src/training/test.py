@@ -4,6 +4,9 @@ Test/Inference Loop for CTC-based OCR.
 
 from typing import List, Tuple
 from enum import Enum
+import gc
+import time
+import tracemalloc
 
 import torch
 from torch.utils.data import DataLoader
@@ -15,6 +18,7 @@ from decoding.ctc_decoder import (
     beam_search_decode,
     decode_targets,
 )
+from metric.ocr_metrics import cer, em, batch_cer, batch_em
 
 
 class DecodeMethod(Enum):
@@ -22,7 +26,7 @@ class DecodeMethod(Enum):
     BEAM_SEARCH = "beam_search"
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def test_one_epoch(
     model: torch.nn.Module,
     loader: DataLoader,
@@ -32,107 +36,107 @@ def test_one_epoch(
     verbose: bool = False,
 ) -> Tuple[List[str], List[str], List[str]]:
     """
-    Run inference on test set (no loss computation).
-
-    Args:
-        model: CNN-BiLSTM model
-        loader: Test DataLoader
-        device: Device to run on (cpu/cuda)
-        decode_method: Best path or beam search, Classes: DecodeMethod
-        verbose: When True, prints per-sample predictions, a wrong-prediction summary, and the final CER / EM metrics.
-
-    Returns:
-        Tuple of (predictions, references, filenames)
+    Menjalankan inferensi dengan pemisahan metrik performa CPU dan GPU secara eksplisit.
     """
-
     model.eval()
 
-    if len(loader) == 0:
-        raise ValueError("DataLoader is empty")
+    # ── PRE-FLUSH & WARMUP ──────────────────────────────────────────────────
+    # Bersihkan sisa memori, CUDA kernel warmup
+    tracemalloc.start()
+    if device.type == "cuda":
+        gc.collect()
+        torch.cuda.empty_cache()
+        try:
+            warmup_batch = next(iter(loader))[0].to(device)
+            for _ in range(5):
+                _ = model(warmup_batch)
+            torch.cuda.synchronize()
+            del warmup_batch
+        except StopIteration:
+            pass
+        torch.cuda.reset_peak_memory_stats(device)
 
-    all_preds: List[str] = []
-    all_refs: List[str] = []
-    all_filenames: List[str] = []
-    results = []
+    total_forward_time = 0.0
+    total_decode_time = 0.0
+    all_preds, all_refs, all_filenames = [], [], []
 
-    for (
-        images,
-        labels,
-        label_lens,
-        _,
-        filenames,
-    ) in tqdm(loader, desc="Testing", leave=False):
-        # Move to device with async transfer
+    # ── INFERENCE LOOP ───────────────────────────────────────────────────────
+    for batch in tqdm(loader, desc=f"Testing", leave=False):
+        images, labels, label_lens, _, filenames = batch
         images = images.to(device, non_blocking=True)
 
-        # Forward pass: [B, T, C] logits
+        # FORWARD PASS (GPU & VRAM)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        start_fwd = time.perf_counter()
+
         logits = model(images)
 
-        if decode_method is DecodeMethod.BEST_PATH:
-            # Best path / Greedy : argmax over class dim, then decode on CPU
-            pred_indices = logits.argmax(dim=2).cpu()  # [B, T]
-            batch_preds = [best_path_decode(seq, IDX2CHAR) for seq in pred_indices]
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        total_forward_time += time.perf_counter() - start_fwd
 
-        elif decode_method is DecodeMethod.BEAM_SEARCH:
-            # Beam search needs per-frame probability distributions
-            probs = torch.softmax(logits, dim=2).cpu()  # [B, T, C]
+        # DECODING (CPU & RAM)
+        start_dec = time.perf_counter()
+
+        if decode_method is DecodeMethod.BEST_PATH:
+            pred_indices = logits.argmax(dim=2).cpu()
+            batch_preds = [best_path_decode(seq, IDX2CHAR) for seq in pred_indices]
+        else:
+            probs = torch.softmax(logits, dim=2).cpu()
             batch_preds = [
                 beam_search_decode(seq, IDX2CHAR, beam_width=beam_width)[0][0]
                 for seq in probs
             ]
 
-        else:
-            raise ValueError(f"Unsupported decode method: {decode_method!r}")
+        total_decode_time += time.perf_counter() - start_dec
 
-        # Decode ground-truth targets (already on CPU)
+        # Ground Truth & Koleksi Hasil
         batch_refs = decode_targets(labels, label_lens, IDX2CHAR)
-
         all_preds.extend(batch_preds)
         all_refs.extend(batch_refs)
         all_filenames.extend(filenames)
 
         if verbose:
-            from metric.ocr_metrics import cer, em
-
             for fname, pred_text, true_text in zip(filenames, batch_preds, batch_refs):
-                c = cer(true_text, pred_text)
-                e = em(true_text, pred_text)
-                results.append(
-                    {
-                        "filename": fname,
-                        "gt": true_text,
-                        "pred": pred_text,
-                        "cer": c,
-                        "em": e,
-                    }
-                )
-                print(fname)
-                print(f"GT   : {true_text}")
-                print(f"PRED : {pred_text}")
-                print(f"CER  : {c:.2f} | EM : {'True' if e == 1.0 else 'False'}")
-                print("-" * 40)
-
-    if verbose:
-        from metric.ocr_metrics import batch_cer, batch_em
-
-        print("\n\n====== WRONG PREDICTIONS ======")
-        for r in results:
-            if r["gt"] != r["pred"]:
-                print(r["filename"])
-                print(f"GT   : {r['gt']}")
-                print(f"PRED : {r['pred']}")
                 print(
-                    f"CER  : {r['cer']:.2f} | EM : {'True' if r['em'] == 1.0 else 'False'}"
+                    f"[{fname}] GT: {true_text} | PRED: {pred_text} | CER: {cer(true_text, pred_text):.2f} | EM: {em(true_text, pred_text):.0f}"
                 )
-                print("-" * 40)
 
-        print("\n\n===== FINAL TEST SUMMARY =====")
-        print(f"Decode Method : {decode_method.value}")
-        if decode_method is DecodeMethod.BEAM_SEARCH:
-            print(f"Beam Width    : {beam_width}")
-        print(f"Total Samples : {len(results)}")
-        print(f"Final CER     : {batch_cer(all_refs, all_preds)}")
-        print(f"Final EM      : {batch_em(all_refs, all_preds)}")
-        print("==============================")
+    # ── STATISTICS CALCULATION ──────────────────────────────────────────────
+    total_sample = max(len(all_preds), 1)
+
+    # Latency (ms/sample)
+    avg_fwd_ms = (total_forward_time / total_sample) * 1000
+    avg_dec_ms = (total_decode_time / total_sample) * 1000
+
+    # Memori GPU (VRAM) - Fokus pada Reserved (Physical Allocation)
+    if device.type == "cuda":
+        peak_vram_res = torch.cuda.max_memory_reserved(device) / (1024**2)
+    else:
+        peak_vram_res = 0.0
+
+    # Memori CPU (RAM) - Mengambil puncak alokasi selama proses berlangsung
+    _, peak_cpu_ram = tracemalloc.get_traced_memory()
+    peak_cpu_mb = peak_cpu_ram / (1024**2)
+    tracemalloc.stop()
+
+    # ── FINAL DETAILED REPORT ───────────────────────────────────────────────
+    print(f"===== PERFORMANCE REPORT =====")
+    print(f"Decode Method    : {decode_method.value}")
+    if decode_method is DecodeMethod.BEAM_SEARCH:
+        print(f"Beam Width       : {beam_width}")
+    print(f"Total Samples    : {total_sample}")
+    print(f"Final CER        : {batch_cer(all_refs, all_preds):.4f}")
+    print(f"Final EM         : {batch_em(all_refs, all_preds):.4f}")
+
+    print(f"===== LATENCY / TIME =====")
+    print(f"GPU Forward Pass : {avg_fwd_ms:.2f} ms/sample")
+    print(f"CPU Decoding     : {avg_dec_ms:.2f} ms/sample")
+    print(f"Total Latency    : {avg_fwd_ms + avg_dec_ms:.2f} ms/sample")
+
+    print(f"===== MEMORY ALLOCATION =====")
+    print(f"Peak GPU VRAM    : {peak_vram_res:.4f} MB (Reserved)")
+    print(f"Peak CPU RAM     : {peak_cpu_mb:.4f} MB")
 
     return all_preds, all_refs, all_filenames
