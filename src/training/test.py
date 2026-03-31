@@ -34,14 +34,14 @@ def test_one_epoch(
     decode_method: DecodeMethod = DecodeMethod.BEST_PATH,
     beam_width: int = 5,
     verbose: bool = False,
-) -> Tuple[List[str], List[str], List[str]]:
+) -> Tuple[List[str], List[str], List[str], float, float, float, float, float, float]:
     """
     Menjalankan inferensi dengan pemisahan metrik performa CPU dan GPU secara eksplisit.
     """
     model.eval()
 
-    # ── PRE-FLUSH & WARMUP ──────────────────────────────────────────────────
-    # Bersihkan sisa memori, CUDA kernel warmup
+    # ===== PRE-FLUSH & WARMUP ========================================
+    # Memory cleaning & CUDA kernel warmup
     tracemalloc.start()
     if device.type == "cuda":
         gc.collect()
@@ -60,12 +60,12 @@ def test_one_epoch(
     total_decode_time = 0.0
     all_preds, all_refs, all_filenames = [], [], []
 
-    # ── INFERENCE LOOP ───────────────────────────────────────────────────────
+    # ===== INFERENCE LOOP ========================================
     for batch in tqdm(loader, desc=f"Testing", leave=False):
         images, labels, label_lens, _, filenames = batch
         images = images.to(device, non_blocking=True)
 
-        # FORWARD PASS (GPU & VRAM)
+        # ===== FORWARD PASS (GPU & VRAM) ===============
         if device.type == "cuda":
             torch.cuda.synchronize()
         start_fwd = time.perf_counter()
@@ -76,7 +76,7 @@ def test_one_epoch(
             torch.cuda.synchronize()
         total_forward_time += time.perf_counter() - start_fwd
 
-        # DECODING (CPU & RAM)
+        # ===== DECODING (CPU & RAM) ===============
         start_dec = time.perf_counter()
 
         if decode_method is DecodeMethod.BEST_PATH:
@@ -91,7 +91,7 @@ def test_one_epoch(
 
         total_decode_time += time.perf_counter() - start_dec
 
-        # Ground Truth & Koleksi Hasil
+        # Ground truth & Collecting results
         batch_refs = decode_targets(labels, label_lens, IDX2CHAR)
         all_preds.extend(batch_preds)
         all_refs.extend(batch_refs)
@@ -100,35 +100,40 @@ def test_one_epoch(
         if verbose:
             for fname, pred_text, true_text in zip(filenames, batch_preds, batch_refs):
                 print(
-                    f"[{fname}] GT: {true_text} | PRED: {pred_text} | CER: {cer(true_text, pred_text):.2f} | EM: {em(true_text, pred_text):.0f}"
+                    f"[{fname}] | CER: {cer(pred=pred_text, ref=true_text):.2f} | EM: {em(pred=pred_text, ref=true_text):.0f} ====="
                 )
+                print(f"GT: {true_text}")
+                print(f"PRED: {pred_text}")
 
-    # ── STATISTICS CALCULATION ──────────────────────────────────────────────
+    # ===== STATISTIC CALCULATION ========================================
     total_sample = max(len(all_preds), 1)
 
     # Latency (ms/sample)
     avg_fwd_ms = (total_forward_time / total_sample) * 1000
     avg_dec_ms = (total_decode_time / total_sample) * 1000
 
-    # Memori GPU (VRAM) - Fokus pada Reserved (Physical Allocation)
+    # GPU memory (VRAM) (Physical Allocation)
     if device.type == "cuda":
         peak_vram_res = torch.cuda.max_memory_reserved(device) / (1024**2)
     else:
         peak_vram_res = 0.0
 
-    # Memori CPU (RAM) - Mengambil puncak alokasi selama proses berlangsung
+    # CPU memory (RAM) Get peak memory usage
     _, peak_cpu_ram = tracemalloc.get_traced_memory()
     peak_cpu_mb = peak_cpu_ram / (1024**2)
     tracemalloc.stop()
 
-    # ── FINAL DETAILED REPORT ───────────────────────────────────────────────
+    final_cer_score = batch_cer(preds=all_preds, refs=all_refs)
+    final_em_score = batch_em(preds=all_preds, refs=all_refs)
+
+    # ===== FINAL DETAILED REPORT ========================================
     print(f"===== PERFORMANCE REPORT =====")
     print(f"Decode Method    : {decode_method.value}")
     if decode_method is DecodeMethod.BEAM_SEARCH:
         print(f"Beam Width       : {beam_width}")
     print(f"Total Samples    : {total_sample}")
-    print(f"Final CER        : {batch_cer(all_refs, all_preds):.4f}")
-    print(f"Final EM         : {batch_em(all_refs, all_preds):.4f}")
+    print(f"Final CER        : {final_cer_score:.4f}")
+    print(f"Final EM         : {final_em_score:.4f}")
 
     print(f"===== LATENCY / TIME =====")
     print(f"GPU Forward Pass : {avg_fwd_ms:.2f} ms/sample")
@@ -139,4 +144,14 @@ def test_one_epoch(
     print(f"Peak GPU VRAM    : {peak_vram_res:.4f} MB (Reserved)")
     print(f"Peak CPU RAM     : {peak_cpu_mb:.4f} MB")
 
-    return all_preds, all_refs, all_filenames
+    return (
+        all_preds,
+        all_refs,
+        all_filenames,
+        final_cer_score,
+        final_em_score,
+        avg_fwd_ms,
+        avg_dec_ms,
+        peak_vram_res,
+        peak_cpu_mb,
+    )

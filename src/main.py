@@ -134,10 +134,10 @@ DATA_SOURCES = {
 
 
 def main():
+    # ===== INITIAL SETUP ========================================
     # Setup directories
     model_dir = Path(PROJECT_ROOT) / "builds" / CONFIG["model_name"]
     model_dir.mkdir(parents=True, exist_ok=True)
-
     if list(model_dir.iterdir()):
         raise RuntimeError(f"Model directory is not empty: {model_dir}")
 
@@ -181,7 +181,7 @@ def main():
     model_info = model.get_model_info()
     logger.info(f"Model: {model_info}")
 
-    # Training loop
+    # ===== MAIN TRAINING LOOP ========================================
     logger.info("Starting training...")
     epoch_logs = []
     train_start = datetime.now()
@@ -193,7 +193,7 @@ def main():
 
     try:
         for epoch in range(CONFIG["epochs"]):
-            # Train
+            # ===== Training ===============
             train_loss, num_steps = train_one_epoch(
                 model,
                 train_loader,
@@ -204,7 +204,7 @@ def main():
             )
             global_step += num_steps
 
-            # Validate
+            # ===== Validating ===============
             val_loss, all_preds, all_refs = validate_one_epoch(
                 model, val_loader, criterion, device
             )
@@ -232,7 +232,7 @@ def main():
                 f"EM: {em:.4f}"
             )
 
-            # Save best model
+            # Save best model / checkpointing
             is_best = False
             if cer < best_cer - CONFIG["cer_eps"]:
                 is_best = True
@@ -309,7 +309,7 @@ def main():
     )
     save_training_plots(epoch_logs, str(model_dir), CONFIG)
 
-    # Testing
+    # ===== Testing ===============
     logger.info("Running test evaluation...")
     all_results = {}
 
@@ -324,7 +324,7 @@ def main():
         model.load_state_dict(checkpoint["model"])
         model.eval()
 
-        all_preds, all_refs, all_imgs = test_one_epoch(
+        all_preds, all_refs, all_imgs, _, _, _, _, _, _ = test_one_epoch(
             model,
             test_loader,
             device,
