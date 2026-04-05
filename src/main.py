@@ -15,10 +15,8 @@ from training.train import train_one_epoch
 from training.validate import validate_one_epoch
 from metric.ocr_metrics import batch_cer, batch_em
 from training.logging import (
-    save_training_logs,
-    save_training_plots,
-    save_test_result,
-    save_test_plots,
+    save_training_result,
+    save_testing_result,
 )
 from utils.seeder import set_seed
 from utils.dataloader import create_dataloaders
@@ -33,22 +31,19 @@ from utils.path import PROJECT_ROOT
 
 CONFIG = {
     # Experiment
-    "model_name": "model_name",
+    "model_name": "1_scenario-3cnn_2bilstm",
     "seed": 42,
     # Model Architecture
-    "cnn_layers": 5,
+    "cnn_layers": 3,
     "rnn_layers": 2,
     # Training
-    "epochs": 2,
+    "epochs": 50,
     "batch_size": 16,
     "learning_rate": 1e-4,
     "grad_clip": 5.0,
     # Data
     "img_height": 48,
     "num_workers": 3,
-    # Checkpointing
-    "cer_eps": 1e-3,
-    "loss_eps": 1e-4,
 }
 
 
@@ -63,7 +58,7 @@ DATA_SOURCES = {
             "prep": get_preprocessing_pipeline(
                 img_height=CONFIG["img_height"], enhance=False
             ),
-        }
+        },
     ],
     "val": [
         {
@@ -189,6 +184,7 @@ def main():
 
     global_step = 0
     best_cer = float("inf")
+    best_em = 0.0
     best_val_loss = float("inf")
 
     try:
@@ -209,9 +205,17 @@ def main():
                 model, val_loader, criterion, device
             )
 
-            # Metrics
+            # Metrics calc
             cer = batch_cer(all_preds, all_refs)
             em = batch_em(all_preds, all_refs)
+
+            # Find best scores
+            if cer < best_cer:
+                best_cer = cer
+            if em > best_em:
+                best_em = em
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
 
             # Log
             log_line = {
@@ -223,7 +227,6 @@ def main():
                 "global_step": global_step,
             }
             epoch_logs.append(log_line)
-
             logger.info(
                 f"Epoch {epoch+1:02d}/{CONFIG['epochs']} | "
                 f"Train Loss: {train_loss:.4f} | "
@@ -231,30 +234,6 @@ def main():
                 f"CER: {cer:.4f} | "
                 f"EM: {em:.4f}"
             )
-
-            # Save best model / checkpointing
-            is_best = False
-            if cer < best_cer - CONFIG["cer_eps"]:
-                is_best = True
-            elif (
-                abs(cer - best_cer) <= CONFIG["cer_eps"]
-                and val_loss < best_val_loss - CONFIG["loss_eps"]
-            ):
-                is_best = True
-
-            if is_best:
-                best_cer = cer
-                best_val_loss = val_loss
-                save_checkpoint(
-                    model,
-                    optimizer,
-                    epoch + 1,
-                    global_step,
-                    val_loss,
-                    cer,
-                    model_dir / "best_model.pth",
-                    logger,
-                )
 
     except KeyboardInterrupt:
         logger.warning("Training interrupted by user")
@@ -283,7 +262,7 @@ def main():
 
     # Save training logs
     logger.info("Saving training logs...")
-    save_training_logs(
+    save_training_result(
         model_dir=str(model_dir),
         model_name=CONFIG["model_name"],
         model=model,
@@ -305,54 +284,72 @@ def main():
         train_end_wall=train_end,
         train_duration_sec=train_duration_sec,
         best_val_cer=best_cer,
+        best_val_em=best_em,
         best_val_loss=best_val_loss,
     )
-    save_training_plots(epoch_logs, str(model_dir), CONFIG)
 
     # ===== Testing ===============
     logger.info("Running test evaluation...")
     all_results = {}
 
-    for model_name in ["best_model", "last_model"]:
-        model_path = model_dir / f"{model_name}.pth"
+    model_path = model_dir / "last_model.pth"
+    if not model_path.exists():
+        raise FileNotFoundError(f"{model_path} not found")
 
-        if not model_path.exists():
-            logger.warning(f"{model_name} not found, skipping")
-            continue
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint["model"])
+    model.eval()
 
-        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
-        model.load_state_dict(checkpoint["model"])
-        model.eval()
-
-        all_preds, all_refs, all_imgs, _, _, _, _, _, _ = test_one_epoch(
-            model,
-            test_loader,
-            device,
-            decode_method=DecodeMethod.BEST_PATH,
-            beam_width=0,
-            verbose=False,
-        )
-        all_results[model_name] = {
-            "imgs": all_imgs,
-            "preds": all_preds,
-            "refs": all_refs,
-        }
-
-        test_cer = batch_cer(all_preds, all_refs)
-        test_em = batch_em(all_preds, all_refs)
-        logger.info(f"{model_name}: CER={test_cer:.4f}, EM={test_em:.4f}")
-
-    save_test_result(
-        CONFIG["model_name"],
-        DATA_SOURCES,
-        test_ds,
-        all_results,
-        str(model_dir),
-        "test_results.json",
+    (
+        all_preds,
+        all_refs,
+        all_filenames,
+        total_sample,
+        final_cer_score,
+        final_em_score,
+        avg_fwd_ms,
+        avg_dec_ms,
+        peak_vram_res,
+        peak_cpu_mb,
+    ) = test_one_epoch(
+        model,
+        test_loader,
+        device,
+        decode_method=DecodeMethod.BEST_PATH,
+        beam_width=0,
+        verbose=False,
     )
-    save_test_plots(all_results, str(model_dir))
+    all_results = {
+        "imgs": all_filenames,
+        "preds": all_preds,
+        "refs": all_refs,
+    }
 
-    logger.info("Training completed successfully!")
+    # Save testing logs
+    save_testing_result(
+        model_name=CONFIG["model_name"],
+        datasets=DATA_SOURCES,
+        test_ds=test_ds,
+        results=all_results,
+        save_dir=str(model_dir),
+        avg_fwd_ms=avg_fwd_ms,
+        avg_dec_ms=avg_dec_ms,
+        peak_vram_res=peak_vram_res,
+        peak_cpu_mb=peak_cpu_mb,
+    )
+
+    # ===== FINAL DETAILED REPORT ========================================
+    logger.info(f"===== PERFORMANCE REPORT =====")
+    logger.info(f"Total Samples    : {total_sample}")
+    logger.info(f"Final CER        : {final_cer_score:.4f}")
+    logger.info(f"Final EM         : {final_em_score:.4f}")
+    logger.info(f"===== LATENCY / TIME =====")
+    logger.info(f"GPU Forward Pass : {avg_fwd_ms:.2f} ms/sample")
+    logger.info(f"CPU Decoding     : {avg_dec_ms:.2f} ms/sample")
+    logger.info(f"Total Latency    : {avg_fwd_ms + avg_dec_ms:.2f} ms/sample")
+    logger.info(f"===== MEMORY ALLOCATION =====")
+    logger.info(f"Peak GPU VRAM    : {peak_vram_res:.4f} MB (Reserved)")
+    logger.info(f"Peak CPU RAM     : {peak_cpu_mb:.4f} MB")
 
 
 if __name__ == "__main__":

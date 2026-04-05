@@ -126,28 +126,11 @@ def test_one_epoch(
     final_cer_score = batch_cer(preds=all_preds, refs=all_refs)
     final_em_score = batch_em(preds=all_preds, refs=all_refs)
 
-    # ===== FINAL DETAILED REPORT ========================================
-    print(f"===== PERFORMANCE REPORT =====")
-    print(f"Decode Method    : {decode_method.value}")
-    if decode_method is DecodeMethod.BEAM_SEARCH:
-        print(f"Beam Width       : {beam_width}")
-    print(f"Total Samples    : {total_sample}")
-    print(f"Final CER        : {final_cer_score:.4f}")
-    print(f"Final EM         : {final_em_score:.4f}")
-
-    print(f"===== LATENCY / TIME =====")
-    print(f"GPU Forward Pass : {avg_fwd_ms:.2f} ms/sample")
-    print(f"CPU Decoding     : {avg_dec_ms:.2f} ms/sample")
-    print(f"Total Latency    : {avg_fwd_ms + avg_dec_ms:.2f} ms/sample")
-
-    print(f"===== MEMORY ALLOCATION =====")
-    print(f"Peak GPU VRAM    : {peak_vram_res:.4f} MB (Reserved)")
-    print(f"Peak CPU RAM     : {peak_cpu_mb:.4f} MB")
-
     return (
         all_preds,
         all_refs,
         all_filenames,
+        total_sample,
         final_cer_score,
         final_em_score,
         avg_fwd_ms,

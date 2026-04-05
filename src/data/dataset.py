@@ -39,6 +39,7 @@ class JavaneseOCRDataset(Dataset):
         if not os.path.exists(img_dir):
             raise FileNotFoundError(f"Image directory not found: {img_dir}")
 
+        # Read CSV & initialize image directory
         self.df = pd.read_csv(csv_path)
         self.img_dir = Path(img_dir)
 
@@ -86,7 +87,7 @@ class JavaneseOCRDataset(Dataset):
             augmented = self.augmentation(image=img_np)
             img = Image.fromarray(augmented["image"])
 
-        # Preprocessing (Torchvision transforms expect PIL Image)
+        # Preprocessing (Torchvision expect PIL Image)
         if self.preprocessing is not None:
             img = self.preprocessing(img)
 

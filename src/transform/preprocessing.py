@@ -26,6 +26,8 @@ class CLAHE:
             clip_limit: Threshold for contrast limiting (higher = more contrast)
             tile_grid_size: Size of grid for histogram equalization
         """
+
+        # Validate parameters
         if clip_limit <= 0:
             raise ValueError(f"clip_limit must be positive, got {clip_limit}")
         if any(x <= 0 for x in tile_grid_size):
