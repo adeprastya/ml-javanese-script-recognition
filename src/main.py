@@ -31,13 +31,13 @@ from utils.path import PROJECT_ROOT
 
 CONFIG = {
     # Experiment
-    "model_name": "1_scenario-3cnn_2bilstm",
+    "model_name": "test",
     "seed": 42,
     # Model Architecture
     "cnn_layers": 3,
     "rnn_layers": 2,
     # Training
-    "epochs": 50,
+    "epochs": 1,
     "batch_size": 16,
     "learning_rate": 1e-4,
     "grad_clip": 5.0,
@@ -45,7 +45,6 @@ CONFIG = {
     "img_height": 48,
     "num_workers": 3,
 }
-
 
 BASE_SYNT_DIR = "dataset/word_nglegena_synthetic_20260130_155231"
 BASE_REAL_DIR = "dataset/word_nglegena_handwritten_20260130_155805"
@@ -149,7 +148,7 @@ def main():
     logger.info(f"Setting seed: {CONFIG['seed']}")
     generator = set_seed(CONFIG["seed"])
 
-    # Create dataloaders
+    # Build dataset
     logger.info("Loading datasets...")
     train_loader, val_loader, test_loader, train_ds, val_ds, test_ds = (
         create_dataloaders(
@@ -161,6 +160,25 @@ def main():
         )
     )
     logger.info(f"Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(test_ds)}")
+    # # ===== DATASET | OUTPUT VISUALIZATION EXAMPLE ===============
+    # print(
+    #     f"\nTotal Train: {len(train_ds)} | Total Val: {len(val_ds)} | Total Test: {len(test_ds)}"
+    # )
+    # batch = next(iter(train_loader))
+    # print("\nBatch structure:")
+    # for i, v in enumerate(batch):
+    #     if hasattr(v, "shape"):
+    #         print(f"Element {i}: shape = {v.shape}")
+    #     else:
+    #         print(f"Element {i}: {v}")
+    # images, labels, label_lengths, input_lengths, filenames = batch
+    # print("\nSample data:")
+    # print("Filename:", filenames[0])
+    # print("Label length:", label_lengths[0])
+    # print("Input length:", input_lengths[0])
+    # print("Images:", images[0])
+    # return
+    # # ===== DATASET | OUTPUT VISUALIZATION EXAMPLE ===============
 
     # Build model
     logger.info("Building model...")
@@ -169,12 +187,18 @@ def main():
         cnn_layers=CONFIG["cnn_layers"],
         rnn_layers=CONFIG["rnn_layers"],
     ).to(device)
+    model_info = model.get_model_info()
+    logger.info(f"Model: {model_info}")
+    # # ===== MODEL | OUTPUT VISUALIZATION EXAMPLE ===============
+    # print("\n")
+    # for k, v in model_info.items():
+    #     print(f"{k:20}: {v}")
+    # print(model)
+    # return
+    # # ===== MODEL | OUTPUT VISUALIZATION EXAMPLE ===============
 
     criterion = nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
-
-    model_info = model.get_model_info()
-    logger.info(f"Model: {model_info}")
 
     # ===== MAIN TRAINING LOOP ========================================
     logger.info("Starting training...")

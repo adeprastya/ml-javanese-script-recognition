@@ -6,9 +6,9 @@ import json
 import os
 import platform
 import sys
+import difflib
 from collections import Counter
 from pathlib import Path
-from itertools import zip_longest
 from typing import Dict, List, Tuple, Any
 
 import matplotlib.pyplot as plt
@@ -170,30 +170,28 @@ def compute_statistics(values: List[float]) -> Dict[str, float]:
 def analyze_errors(
     preds: List[str], refs: List[str], top_k: int = 10
 ) -> Dict[str, Any]:
-    """Analyze common error patterns."""
-
     substitutions = []
     insertions = []
     deletions = []
 
     for pred, ref in zip(preds, refs):
-        # Menggunakan zip_longest agar karakter yang hilang/lebih tetap terhitung
-        for p, r in zip_longest(pred, ref, fillvalue=None):
-            if p is None:  # Karakter ada di ref tapi tidak di pred
-                deletions.append(r)
-            elif r is None:  # Karakter ada di pred tapi tidak di ref
-                insertions.append(p)
-            elif p != r:
-                substitutions.append(f"{r}→{p}")
+        matcher = difflib.SequenceMatcher(None, ref, pred)
 
-    sub_counter = Counter(substitutions)
-    ins_counter = Counter(insertions)
-    del_counter = Counter(deletions)
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "replace":
+                # Char in ref[i1:i2] substituted with pred[j1:j2]
+                substitutions.append(f"{ref[i1:i2]}→{pred[j1:j2]}")
+            elif tag == "delete":
+                # Char in ref[i1:i2] deleted
+                deletions.append(ref[i1:i2])
+            elif tag == "insert":
+                # Char in pred[j1:j2] inserted
+                insertions.append(pred[j1:j2])
 
     return {
-        "substitutions": dict(sub_counter.most_common(top_k)),
-        "insertions": dict(ins_counter.most_common(top_k)),
-        "deletions": dict(del_counter.most_common(top_k)),
+        "substitutions": dict(Counter(substitutions).most_common(top_k)),
+        "insertions": dict(Counter(insertions).most_common(top_k)),
+        "deletions": dict(Counter(deletions).most_common(top_k)),
         "total_errors": len(substitutions) + len(insertions) + len(deletions),
     }
 
@@ -297,7 +295,6 @@ def save_testing_plots(results: Dict, model_dir: str) -> None:
     refs = results["refs"]
 
     cer_vals = [cer(p, r) for p, r in zip(preds, refs)]
-    ref_lens = [len(r) for r in refs]
 
     # 1. ===== CER Distribution ===============
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -323,17 +320,6 @@ def save_testing_plots(results: Dict, model_dir: str) -> None:
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(model_dir / f"test_plot_cer_dist.png", dpi=300)
-    plt.close()
-
-    # 2. ===== Length vs CER ===============
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(ref_lens, cer_vals, alpha=0.5, s=30)
-    ax.set_xlabel("Reference Sequence Length", fontsize=12)
-    ax.set_ylabel("Character Error Rate", fontsize=12)
-    ax.set_title(f"Sequence Length vs CER", fontsize=14, fontweight="bold")
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(model_dir / f"test_plot_length_vs_cer.png", dpi=300)
     plt.close()
 
 
@@ -406,11 +392,7 @@ def save_training_result(
         "hyperparameters": config,
         "model": {
             "name": model_name,
-            "cnn_layers": cnn_layers,
-            "bilstm_layers": bilstm_layers,
-            "total_params": total_params,
-            "trainable_params": trainable_params,
-            "architecture": model_arch,
+            **model_arch,
         },
         "dataset": {
             "train": {
