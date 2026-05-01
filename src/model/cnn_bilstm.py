@@ -133,8 +133,9 @@ class CNNBiLSTM(nn.Module):
             input_size=256,  # H' * C
             hidden_size=256,  # H' * C
             num_layers=rnn_layers,  # 1 / 2 / 3
-            bidirectional=True,
             batch_first=True,
+            dropout=0.0,
+            bidirectional=True,
         )
 
         # ========================================

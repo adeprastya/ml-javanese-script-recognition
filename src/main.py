@@ -24,23 +24,22 @@ from utils.logger import setup_logging
 from utils.checkpoint import save_checkpoint
 from utils.path import PROJECT_ROOT
 
-
 # ============================================================================
 # CONFIGURATION & DATA SOURCES
 # ============================================================================
 
 CONFIG = {
     # Experiment
-    "model_name": "test",
-    "seed": 42,
+    "seed": 1,
+    "model_name": "8-5C3B",
     # Model Architecture
-    "cnn_layers": 3,
-    "rnn_layers": 2,
+    "cnn_layers": 5,
+    "rnn_layers": 3,
     # Training
-    "epochs": 1,
+    "epochs": 70,
     "batch_size": 16,
-    "learning_rate": 1e-4,
-    "grad_clip": 5.0,
+    "learning_rate": 2e-4,
+    "grad_clip": 1.0,
     # Data
     "img_height": 48,
     "num_workers": 3,
@@ -54,9 +53,7 @@ DATA_SOURCES = {
             "csv": f"{BASE_SYNT_DIR}/label_train.csv",
             "img_dir": f"{BASE_SYNT_DIR}/image_train",
             "aug": get_augmentation_pipeline(prob=1.0, seed=CONFIG["seed"]),
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
         },
     ],
     "val": [
@@ -64,9 +61,19 @@ DATA_SOURCES = {
             "csv": f"{BASE_SYNT_DIR}/label_val.csv",
             "img_dir": f"{BASE_SYNT_DIR}/image_val",
             "aug": None,
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
+        },
+        {
+            "csv": f"{BASE_REAL_DIR}/label_5.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_5",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
+        },
+        {
+            "csv": f"{BASE_REAL_DIR}/label_2.csv",
+            "img_dir": f"{BASE_REAL_DIR}/image_2",
+            "aug": None,
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
         },
     ],
     "test": [
@@ -74,49 +81,25 @@ DATA_SOURCES = {
             "csv": f"{BASE_REAL_DIR}/label_1.csv",
             "img_dir": f"{BASE_REAL_DIR}/image_1",
             "aug": None,
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
-        },
-        {
-            "csv": f"{BASE_REAL_DIR}/label_2.csv",
-            "img_dir": f"{BASE_REAL_DIR}/image_2",
-            "aug": None,
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
         },
         {
             "csv": f"{BASE_REAL_DIR}/label_3.csv",
             "img_dir": f"{BASE_REAL_DIR}/image_3",
             "aug": None,
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
         },
         {
             "csv": f"{BASE_REAL_DIR}/label_4.csv",
             "img_dir": f"{BASE_REAL_DIR}/image_4",
             "aug": None,
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
-        },
-        {
-            "csv": f"{BASE_REAL_DIR}/label_5.csv",
-            "img_dir": f"{BASE_REAL_DIR}/image_5",
-            "aug": None,
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
         },
         {
             "csv": f"{BASE_REAL_DIR}/label_6.csv",
             "img_dir": f"{BASE_REAL_DIR}/image_6",
             "aug": None,
-            "prep": get_preprocessing_pipeline(
-                img_height=CONFIG["img_height"], enhance=False
-            ),
+            "prep": get_preprocessing_pipeline(img_height=CONFIG["img_height"]),
         },
     ],
 }
@@ -199,6 +182,14 @@ def main():
 
     criterion = nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
     optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=0.5,
+        patience=5,
+        threshold=1e-4,
+        min_lr=1e-6,
+    )
 
     # ===== MAIN TRAINING LOOP ========================================
     logger.info("Starting training...")
@@ -210,6 +201,7 @@ def main():
     best_cer = float("inf")
     best_em = 0.0
     best_val_loss = float("inf")
+    last_lr = CONFIG["learning_rate"]
 
     try:
         for epoch in range(CONFIG["epochs"]):
@@ -232,6 +224,13 @@ def main():
             # Metrics calc
             cer = batch_cer(all_preds, all_refs)
             em = batch_em(all_preds, all_refs)
+
+            # Lr scheduler
+            scheduler.step(cer)
+            current_lr = scheduler.get_last_lr()[0]
+            if current_lr != last_lr:
+                logger.info(f"Learning rate adjusted: {current_lr}")
+                last_lr = current_lr
 
             # Find best scores
             if cer < best_cer:
@@ -285,7 +284,6 @@ def main():
     logger.info(f"Training finished in {hours}h {minutes}m {seconds}s")
 
     # Save training logs
-    logger.info("Saving training logs...")
     save_training_result(
         model_dir=str(model_dir),
         model_name=CONFIG["model_name"],
@@ -300,6 +298,7 @@ def main():
         val_ds=val_ds,
         datasets=DATA_SOURCES,
         optimizer=optimizer,
+        scheduler=scheduler,
         criterion=criterion,
         epochs=CONFIG["epochs"],
         batch_size=CONFIG["batch_size"],

@@ -15,7 +15,7 @@ def train_one_epoch(
     criterion: torch.nn.CTCLoss,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
-    grad_clip: float = 5.0,
+    grad_clip: float = 0.0,
 ) -> Tuple[float, int]:
     """
     Train model for one epoch.
@@ -69,7 +69,7 @@ def train_one_epoch(
 
         # Clip gradients
         if grad_clip > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
 
         optimizer.step()
 

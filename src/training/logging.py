@@ -18,7 +18,6 @@ from torch.utils.data import ConcatDataset
 
 from metric.ocr_metrics import batch_cer, batch_em, cer, em, levenshtein
 
-
 # ============================================================================
 # SYSTEM & ENVIRONMENT INFO
 # ============================================================================
@@ -72,6 +71,29 @@ def get_optimizer_config(optimizer) -> Dict:
         for key, value in param_group.items():
             if key != "params":  # Skip the actual parameters
                 config[key] = value
+
+    return config
+
+
+def get_scheduler_config(scheduler) -> Dict:
+    config = {
+        "class": scheduler.__class__.__name__,
+    }
+
+    # Get all hyperparameters from state_dict
+    state = scheduler.state_dict()
+    for key, value in state.items():
+        # Filter out internal state keys that are not hyperparameters
+        if key not in [
+            "_last_lr",
+            "last_epoch",
+            "_step_count",
+            "best",
+            "mode_worse",
+            "cooldown_counter",
+            "num_bad_epochs",
+        ]:
+            config[key] = value
 
     return config
 
@@ -230,7 +252,9 @@ def write_stats(f, name, stats):
 # ============================================================================
 
 
-def save_training_plots(epoch_logs: List[Dict], model_dir: str) -> None:
+def save_training_plots(
+    epoch_logs: List[Dict], model_dir: str, model_name: str
+) -> None:
     """Generate training visualization plots."""
 
     model_dir = Path(model_dir)
@@ -247,11 +271,15 @@ def save_training_plots(epoch_logs: List[Dict], model_dir: str) -> None:
     ax.plot(epochs, val_losses, label="Val Loss", linewidth=2, alpha=0.8)
     ax.set_xlabel("Epoch", fontsize=12)
     ax.set_ylabel("CTC Loss", fontsize=12)
-    ax.set_title("Training & Validation Loss", fontsize=14, fontweight="bold")
+    ax.set_title(
+        f"Training & Validation Loss ({model_name})",
+        fontsize=12,
+        fontweight="semibold",
+    )
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(model_dir / "train_plot_loss.png", dpi=300)
+    plt.savefig(model_dir / "train_loss.png", dpi=300)
     plt.close()
 
     # 2. ===== Metrics Plot ===============
@@ -279,14 +307,16 @@ def save_training_plots(epoch_logs: List[Dict], model_dir: str) -> None:
     ax1.legend(lns, labs, loc="center right", fontsize=10, frameon=True, shadow=True)
 
     plt.title(
-        "Character Error Rate & Exact Match Accuracy", fontsize=14, fontweight="bold"
+        f"Character Error Rate & Exact Match Accuracy ({model_name})",
+        fontsize=12,
+        fontweight="semibold",
     )
     plt.tight_layout()
-    plt.savefig(model_dir / "train_plot_metrics.png", dpi=300)
+    plt.savefig(model_dir / "train_metric.png", dpi=300)
     plt.close()
 
 
-def save_testing_plots(results: Dict, model_dir: str) -> None:
+def save_testing_plots(results: Dict, model_dir: str, model_name: str) -> None:
     """Generate test evaluation plots."""
 
     model_dir = Path(model_dir)
@@ -315,11 +345,11 @@ def save_testing_plots(results: Dict, model_dir: str) -> None:
     )
     ax.set_xlabel("Character Error Rate", fontsize=12)
     ax.set_ylabel("Frequency", fontsize=12)
-    ax.set_title(f"CER Distribution", fontsize=14, fontweight="bold")
+    ax.set_title(f"CER Distribution ({model_name})", fontsize=12, fontweight="semibold")
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(model_dir / f"test_plot_cer_dist.png", dpi=300)
+    plt.savefig(model_dir / f"test_cer.png", dpi=300)
     plt.close()
 
 
@@ -343,6 +373,7 @@ def save_training_result(
     train_ds: ConcatDataset,
     val_ds: ConcatDataset,
     optimizer,
+    scheduler,
     criterion,
     epochs: int,
     batch_size: int,
@@ -383,6 +414,7 @@ def save_training_result(
 
     # Get complete configs
     optimizer_config = get_optimizer_config(optimizer)
+    scheduler_config = get_scheduler_config(scheduler)
     criterion_config = get_criterion_config(criterion)
     model_arch = get_model_architecture(model)
 
@@ -406,6 +438,7 @@ def save_training_result(
         },
         "training": {
             "optimizer": optimizer_config,
+            "scheduler": scheduler_config,
             "criterion": criterion_config,
             "epochs": epochs,
             "batch_size": batch_size,
@@ -517,6 +550,12 @@ def save_training_result(
                 f.write(f"  {key:<18} : {value}\n")
         f.write("\n")
 
+        f.write(f"Scheduler          : {scheduler_config['class']}\n")
+        for key, value in scheduler_config.items():
+            if key != "class":
+                f.write(f"  {key:<18} : {value}\n")
+        f.write("\n")
+
         f.write(f"Criterion          : {criterion_config['class']}\n")
         for key, value in criterion_config.items():
             if key != "class":
@@ -562,7 +601,7 @@ def save_training_result(
         f.write(SUBLINE + "\n")
 
     # 3. ===== Generate plots ===============
-    save_training_plots(epoch_logs, str(model_dir))
+    save_training_plots(epoch_logs, str(model_dir), model_name)
 
     return str(json_path), str(txt_path)
 
@@ -735,6 +774,6 @@ def save_testing_result(
         f.write(SUBLINE + "\n")
 
     # 3. ===== Generate plots ===============
-    save_testing_plots(results, str(save_dir))
+    save_testing_plots(results, str(save_dir), model_name)
 
     return str(json_path), str(txt_path)
